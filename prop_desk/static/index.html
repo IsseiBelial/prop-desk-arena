@@ -10,11 +10,16 @@
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo">◆</span> PROP DESK <span class="badge paper">PAPER</span></div>
-  <div class="badges"><span id="mode" class="badge">…</span><span id="datasrc" class="badge">data: …</span></div>
+  <div class="badges">
+    <span id="mode" class="badge">…</span>
+    <span id="datasrc" class="badge">data: …</span>
+    <span id="regime" class="badge hidden"></span>
+  </div>
   <div class="stats">
     <div><label>Equity</label><b id="equity">–</b></div>
     <div><label>Day P&amp;L</label><b id="daypnl">–</b></div>
     <div><label>Total P&amp;L</label><b id="totpnl">–</b></div>
+    <div><label>Council hit rate</label><b id="hitrate">–</b></div>
     <div><label>AI cost</label><b id="cost">$0.00</b></div>
   </div>
   <form class="controls" id="runform">
@@ -25,27 +30,25 @@
 </header>
 
 <nav class="pipeline" id="pipeline">
-  <div data-p="research">Research</div><div data-p="pitch">Pitch</div><div data-p="round1">Round 1 · blind vote</div>
-  <div data-p="debate">Debate</div><div data-p="vote">Consensus</div><div data-p="risk">Risk</div><div data-p="execute">Execute</div>
+  <div data-p="housekeeping">Housekeeping</div><div data-p="research">Research</div><div data-p="pitch">Pitch</div>
+  <div data-p="bear">Bear case</div><div data-p="round1">Round 1 · blind</div><div data-p="debate">Debate</div>
+  <div data-p="vote">Consensus</div><div data-p="risk">Risk</div><div data-p="execute">Execute</div>
+  <div data-p="markets" class="mk">Prediction markets</div>
 </nav>
 
 <main class="grid">
-  <section class="panel floor-panel">
-    <h2>The Floor</h2>
-    <div class="floor" id="floor">
-      <div class="table" id="table">
-        <div class="t-empty" id="tEmpty">Press <b>Run session</b> to open the floor.</div>
-        <div class="t-body hidden" id="tBody">
-          <div class="t-head"><span id="tSym">—</span><span id="tPx"></span><span id="tScreen" class="muted"></span></div>
-          <svg id="spark" viewBox="0 0 300 70" preserveAspectRatio="none"></svg>
-          <div class="gauge">
-            <div class="g-track"><div class="g-band" id="gBand"></div><div class="g-ghost" id="gGhost"></div><div class="g-needle" id="gNeedle"></div></div>
-            <div class="g-scale"><span>SHORT</span><span id="gScore">score —</span><span>LONG</span></div>
-          </div>
-          <div class="t-verdict" id="tVerdict"></div>
-        </div>
+  <section class="panel stage-panel">
+    <div class="stage-head">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-view="ship" role="tab">🚀 Spaceship</button>
+        <button class="tab" data-view="council" role="tab">⚖️ The Council</button>
       </div>
-      <!-- agent seats are injected here -->
+      <label class="auto"><input type="checkbox" id="autocam" checked> Auto camera</label>
+    </div>
+    <div class="stage" id="stage">
+      <div class="view" id="view-ship"><svg id="ship" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div class="view hidden" id="view-council"><svg id="council" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div class="bubbles" id="bubbles"></div>
     </div>
   </section>
 
@@ -54,26 +57,46 @@
     <div class="chat" id="chat"></div>
   </section>
 
-  <section class="panel votes-panel">
-    <h2>Vote Board <span class="muted" id="voteSym"></span></h2>
-    <table class="votes" id="votes">
-      <thead><tr><th>Trader</th><th>Round 1</th><th>Round 2</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <p class="muted small" id="rules"></p>
+  <section class="panel lb-panel">
+    <h2>Who called it? <span class="muted small" id="lbNote"></span></h2>
+    <div id="leaderboard" class="lb"></div>
+  </section>
+
+  <section class="panel idea-panel">
+    <h2>On the table <span class="muted" id="ideaTitle"></span></h2>
+    <div id="idea" class="idea"><div class="empty">Waiting for the first pitch…</div></div>
+  </section>
+
+  <section class="panel equity-panel">
+    <h2>Equity vs S&amp;P 500 <span class="muted small" id="eqNote"></span></h2>
+    <svg id="equityChart" viewBox="0 0 600 200"></svg>
+    <div class="legend"><span class="sw us"></span>Prop Desk <span class="sw spy"></span>SPY</div>
   </section>
 
   <section class="panel book-panel">
     <h2>Book</h2>
-    <table class="book" id="positions">
-      <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th><th>Last</th><th>Stop</th><th>Target</th><th>P&amp;L</th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <h3>Blotter</h3>
+    <div class="scroll-x">
+      <table class="book" id="positions">
+        <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th><th>Last</th><th>Stop</th><th>Target</th><th>P&amp;L</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h3>Prediction markets</h3>
+    <div class="scroll-x">
+      <table class="book" id="contracts">
+        <thead><tr><th>Market</th><th>Side</th><th>Qty</th><th>Paid</th><th>Now</th><th>Closes</th><th>P&amp;L</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel blotter-panel">
+    <h2>Blotter</h2>
     <div class="blotter" id="blotter"></div>
+    <p class="muted small" id="rules"></p>
   </section>
 </main>
 
-<script src="/static/floor.js"></script>
+<script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

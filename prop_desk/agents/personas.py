@@ -30,9 +30,14 @@ class Persona:
     sees: list[str] = field(default_factory=list)  # which feature groups they get
     weight: float = 1.0
     heuristic: Heuristic | None = None
+    # Which kind of evidence the trader uses. A trade needs agreement from at least
+    # two different families, so three price-chart traders can't approve it alone.
+    family: str = ""
+    look: str = ""  # character accessory drawn in the GUI
 
     def public(self) -> dict:
-        return {k: getattr(self, k) for k in ("id", "name", "role", "kind", "color", "initials", "bio", "weight")}
+        keys = ("id", "name", "role", "kind", "color", "initials", "bio", "weight", "family", "look")
+        return {k: getattr(self, k) for k in keys}
 
 
 SHARED_RULES = """You sit on the trading floor of a small proprietary trading firm. Researchers
@@ -206,37 +211,43 @@ def news_view(f: dict, s: Snapshot):
 
 RESEARCHERS = [
     Persona("scout", "Priya Nair", "Quant Researcher", "researcher", "#38bdf8", "PN",
-            "Screens the watchlist every session and pitches the names with the strongest setups.",
-            sees=["momentum", "ichimoku", "money_flow", "volatility", "fundamentals"]),
+            "Hunts the watchlist every session and pitches the names with the strongest setups.",
+            sees=["momentum", "ichimoku", "money_flow", "volatility", "fundamentals"], look="goggles"),
     Persona("newshound", "Leo Brandt", "News Researcher", "researcher", "#a78bfa", "LB",
             "Reads the tape and the wires; briefs the floor on what's moving each name.",
-            sees=["news"]),
+            sees=["news"], look="newspaper"),
+    Persona("bear", "Bruno Kodiak", "Devil's Advocate", "researcher", "#c08457", "BK",
+            "Paid to hate every idea. Makes the strongest case against each pitch before anyone votes.",
+            sees=["momentum", "ichimoku", "money_flow", "volatility", "fundamentals", "news"], look="bear"),
+    Persona("oracle", "Nova Lin", "Prediction Markets Researcher", "researcher", "#2dd4bf", "NL",
+            "When stocks offer nothing, she scans Kalshi for markets the crowd has mispriced.",
+            look="visor"),
 ]
 
 TRADERS = [
     Persona("fundamental", "Ruth Okafor", "Fundamental Trader", "trader", "#34d399", "RO",
             "Valuation, growth, margins, balance sheet. Won't buy a story she can't see in the numbers.",
-            sees=["fundamentals"], heuristic=fundamental_view),
+            sees=["fundamentals"], heuristic=fundamental_view, family="fundamental", look="glasses"),
     Persona("momentum", "Dash Reyes", "Momentum Trader", "trader", "#f59e0b", "DR",
             "Buys strength, sells weakness. Trend, RSI, MACD, 52-week highs.",
-            sees=["momentum"], heuristic=momentum_view),
+            sees=["momentum"], heuristic=momentum_view, family="price", look="headband"),
     Persona("cloud", "Kenji Sato", "Ichimoku Cloud Trader", "trader", "#f472b6", "KS",
             "Trades only what the Ichimoku cloud confirms: price vs cloud, Tenkan/Kijun, Chikou.",
-            sees=["ichimoku"], heuristic=cloud_view),
+            sees=["ichimoku"], heuristic=cloud_view, family="price", look="cloudhat"),
     Persona("flow", "Vivian Cole", "Money Flow & Strength Trader", "trader", "#60a5fa", "VC",
             "Follows the money: MFI, Chaikin flow, OBV, volume, relative strength vs the market.",
-            sees=["money_flow"], heuristic=money_flow_view),
+            sees=["money_flow"], heuristic=money_flow_view, family="price", look="badge"),
     Persona("news", "Max Byline", "News & Catalyst Trader", "trader", "#fb7185", "MB",
             "Trades headlines and catalysts. Fast to act, fast to fold if the story changes.",
-            sees=["news"], heuristic=news_view, weight=0.8),
+            sees=["news"], heuristic=news_view, weight=0.8, family="news", look="headset"),
 ]
 
 RISK = Persona("risk", "Ingrid Hale", "Risk Manager", "risk", "#facc15", "IH",
                "Sizes every trade and has a hard veto. Her limits are enforced in code.",
-               sees=["volatility"])
+               sees=["volatility"], look="helmet")
 
 CHAIR = Persona("chair", "Sam Whitford", "Head of Desk", "chair", "#e5e7eb", "SW",
-                "Runs the meeting, calls the vote, and writes the desk memo.")
+                "Chairs the Council, calls the vote, and writes the desk memo.", look="crown")
 
 ALL = RESEARCHERS + TRADERS + [RISK, CHAIR]
 BY_ID = {p.id: p for p in ALL}
@@ -248,3 +259,51 @@ DISCIPLINE_PROMPTS = {
     "flow": "You are a money-flow and relative-strength trader. You read MFI, Chaikin Money Flow, OBV trend, up/down volume and performance versus SPY to judge whether institutions are accumulating or distributing.",
     "news": "You are a news and catalyst trader. You trade on headlines, earnings, guidance, analyst actions and regulatory events. Stale or absent news means no edge. You think about whether news is already priced in.",
 }
+
+
+CONTRACT_PROMPTS = {
+    "fundamental": "For prediction markets you are the base-rate analyst: start from how often events like this happen historically and the hard data on the underlying (economic releases, prices, schedules).",
+    "momentum": "For prediction markets you read how the contract's own price has been moving - crowds that are repricing quickly often keep going - and whether the move is overdone.",
+    "cloud": "You trade Ichimoku charts. A prediction-market contract has no meaningful cloud. Unless the market is about an asset's price and the chart data clearly answers it, PASS and say why.",
+    "flow": "For prediction markets you read liquidity: volume, open interest and the bid/ask spread. Thin markets can be badly mispriced but are hard to trust; deep markets are usually efficient.",
+    "news": "For prediction markets you weigh the latest news and scheduled catalysts that decide the outcome, and whether the price already reflects them.",
+}
+
+
+# ---------------------------------------------------------------- prediction-market heuristics
+# Each returns (probability_yes or None to pass, signals, concerns).
+
+def contract_base_rate(c):
+    # Favourite-longshot bias: long shots tend to be overpriced, favourites underpriced.
+    if c.implied <= 15:
+        return c.implied - 5, [f"long shot at {c.implied}¢ - long shots are usually overpriced"], []
+    if c.implied >= 85:
+        return min(99, c.implied + 4), [f"heavy favourite at {c.implied}¢ - favourites tend to be underpriced"], []
+    return None, [], ["no base-rate edge in the middle of the range"]
+
+
+def contract_momentum(c):
+    move = c.last_price - c.previous_price
+    if abs(move) < 6:
+        return None, [], [f"price barely moved ({move:+d}¢)"]
+    est = c.implied + (4 if move > 0 else -4)
+    return max(1, min(99, est)), [f"contract repricing {move:+d}¢ - crowd still catching up"], []
+
+
+def contract_cloud(c):
+    return None, [], ["no chart, no cloud, no trade"]
+
+
+def contract_flow(c):
+    spread = c.yes_ask - c.yes_bid
+    if c.volume < 20000 or spread > 4:
+        return None, [], [f"thin market (volume {c.volume:,}, spread {spread}¢) - can't trust the price"]
+    return c.implied, [f"deep market (volume {c.volume:,}) - price is probably fair"], []
+
+
+def contract_news(c):
+    return None, [], ["no headlines on this one in rules mode"]
+
+
+CONTRACT_HEURISTICS = {"fundamental": contract_base_rate, "momentum": contract_momentum,
+                       "cloud": contract_cloud, "flow": contract_flow, "news": contract_news}

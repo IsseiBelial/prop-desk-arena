@@ -61,30 +61,39 @@ class SyntheticProvider:
         "Options activity in {s} picks up ahead of earnings",
     ]
 
-    def _rng(self, symbol: str, salt: str = "") -> np.random.Generator:
-        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    _EPOCH = pd.Timestamp("2019-01-01")
+
+    def _rng(self, symbol: str, salt: str = "", daily: bool = False) -> np.random.Generator:
+        # Price history is seeded per symbol only, so it stays consistent from day to
+        # day (yesterday's bars don't change) and positions can be marked over time.
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d") if daily else ""
         seed = int(hashlib.sha256(f"{symbol}|{day}|{salt}".encode()).hexdigest()[:8], 16)
         return np.random.default_rng(seed)
 
     def bars(self, symbol: str, days: int = 260) -> pd.DataFrame:
+        idx = pd.bdate_range(self._EPOCH, datetime.now().date())
+        n = len(idx)
         rng = self._rng(symbol, "bars")
-        drift = rng.normal(0.0004, 0.0012)
-        vol = rng.uniform(0.012, 0.03)
-        # A late regime change makes some names trend and others reverse.
-        rets = rng.normal(drift, vol, days)
-        rets[-40:] += rng.normal(0, 0.003)
-        close = rng.uniform(40, 600) * np.exp(np.cumsum(rets))
-        spread = np.abs(rng.normal(0, vol * 0.6, days)) * close
-        open_ = close * (1 + rng.normal(0, vol * 0.3, days))
+        drift = rng.normal(0.0004, 0.0008)
+        vol = rng.uniform(0.012, 0.028)
+        # Regimes: every ~60 days the stock's trend changes, so setups come and go.
+        regime = np.repeat(rng.normal(0, 0.0025, n // 60 + 1), 60)[:n]
+        rets = rng.normal(drift, vol, n) + regime
+        path = np.exp(np.cumsum(rets))
+        close = path / path[-2] * rng.uniform(30, 700)  # land at a realistic price today
+        # Intraday drift for today's bar so prices move during the day.
+        now = datetime.now(timezone.utc)
+        steps = (now.hour * 60 + now.minute) // 10
+        live = self._rng(symbol, "intraday", daily=True).normal(0, vol / 6, max(steps, 1)).sum()
+        close[-1] *= float(np.exp(live))
+        spread = np.abs(rng.normal(0, vol * 0.6, n)) * close
+        open_ = close * (1 + rng.normal(0, vol * 0.3, n))
         high = np.maximum(open_, close) + spread
         low = np.minimum(open_, close) - spread
         base_vol = rng.uniform(5e6, 60e6)
-        volume = base_vol * (1 + np.abs(rets) / vol * 0.5) * rng.uniform(0.7, 1.3, days)
-        idx = pd.bdate_range(end=datetime.now().date(), periods=days)
-        return pd.DataFrame(
-            {"open": open_, "high": high, "low": low, "close": close, "volume": volume.round()},
-            index=idx,
-        )
+        volume = base_vol * (1 + np.abs(rets) / vol * 0.5) * rng.uniform(0.7, 1.3, n)
+        df = pd.DataFrame({"open": open_, "high": high, "low": low, "close": close, "volume": volume.round()}, index=idx)
+        return df.tail(days)
 
     def fundamentals(self, symbol: str) -> dict:
         rng = self._rng(symbol, "fund")
@@ -100,10 +109,11 @@ class SyntheticProvider:
             "roe_pct": round(float(rng.uniform(-5, 60)), 1),
             "debt_to_equity": round(float(rng.uniform(0, 250)), 1),
             "fcf_yield_pct": round(float(rng.uniform(-1, 8)), 2),
+            "next_earnings": str((datetime.now() + timedelta(days=int(self._rng(symbol, "earn", daily=True).integers(0, 75)))).date()),
         }
 
     def news(self, symbol: str) -> list[Headline]:
-        rng = self._rng(symbol, "news")
+        rng = self._rng(symbol, "news", daily=True)
         mood = rng.normal(0, 1)
         out = []
         for i in range(int(rng.integers(2, 5))):
@@ -152,7 +162,18 @@ class YahooProvider:
             "roe_pct": pct("returnOnEquity"),
             "debt_to_equity": info.get("debtToEquity"),
             "fcf_yield_pct": round(fcf / mcap * 100, 2) if fcf and mcap else None,
+            "next_earnings": self._next_earnings(symbol),
         }
+
+    @staticmethod
+    def _next_earnings(symbol: str) -> str | None:
+        import yfinance as yf
+        try:
+            cal = yf.Ticker(symbol).calendar or {}
+            dates = cal.get("Earnings Date") if isinstance(cal, dict) else None
+            return str(dates[0]) if dates else None
+        except Exception:
+            return None
 
     def news(self, symbol: str) -> list[Headline]:
         import yfinance as yf
