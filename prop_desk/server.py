@@ -11,7 +11,7 @@ import logging
 import os
 from collections import deque
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -28,7 +28,7 @@ STATIC = os.path.join(os.path.dirname(__file__), "static")
 
 @asynccontextmanager
 async def lifespan(app):
-    if settings.autorun_minutes > 0:
+    if settings.autorun_minutes > 0 or settings.schedule_et:
         asyncio.create_task(_autorun())
     yield
 
@@ -69,9 +69,11 @@ async def state():
         "agents": [p.public() for p in P.ALL],
         "factions": [f.public() for f in arena.factions],
         "standings": arena.standings(),
+        "season": arena.season_info(),
         "portfolios": {f.id: f.broker.summary() for f in arena.factions},
         "cost_usd": arena.cost_usd,
         "autorun_minutes": settings.autorun_minutes,
+        "schedule_et": settings.schedule_et,
         "settings": {
             "watchlist": settings.watchlist,
             "threshold": settings.approve_threshold,
@@ -118,9 +120,10 @@ async def run_session(req: RunRequest):
 async def reset():
     if arena.running:
         return {"ok": False, "reason": "Wait for the session to finish"}
-    for f in arena.factions:  # a fresh season: money and track records
+    for f in arena.factions:  # start over: money, track records and season history
         f.broker.reset()
         f.scorecard.reset()
+    arena.season.reset()
     await arena.publish()
     return {"ok": True}
 
@@ -143,11 +146,30 @@ def _market_open() -> bool:
     return now.weekday() < 5 and (9, 30) <= (now.hour, now.minute) < (16, 0)
 
 
+def _next_scheduled(now: datetime) -> datetime:
+    """Next weekday run time from PROP_DESK_SCHEDULE_ET (US-Eastern)."""
+    times = sorted(tuple(map(int, t.split(":"))) for t in settings.schedule_et)
+    day = now
+    for _ in range(8):
+        for h, m in times:
+            t = day.replace(hour=h, minute=m, second=0, microsecond=0)
+            if t > now and t.weekday() < 5:
+                return t
+        day = (day + timedelta(days=1)).replace(hour=0, minute=0)
+    raise ValueError("no schedule")
+
+
 async def _autorun():
-    """Run a session every N minutes (during US market hours unless configured otherwise)."""
+    """Run sessions on a schedule: fixed ET times, or every N minutes during market hours."""
     while True:
-        await asyncio.sleep(settings.autorun_minutes * 60)
-        if arena.running or (settings.market_hours_only and not _market_open()):
+        if settings.schedule_et:
+            now = datetime.now(ZoneInfo("America/New_York"))
+            await asyncio.sleep(max(1, (_next_scheduled(now) - now).total_seconds()))
+        else:
+            await asyncio.sleep(settings.autorun_minutes * 60)
+            if settings.market_hours_only and not _market_open():
+                continue
+        if arena.running:
             continue
         history.clear()
         await arena.run_session()

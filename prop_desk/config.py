@@ -28,7 +28,12 @@ class Settings:
     # --- Execution ---
     # Orders go to an internal paper ledger. There is intentionally no live
     # brokerage connection yet - see README "Going live".
-    starting_cash: float = float(os.getenv("PROP_DESK_CASH", "100000"))  # per faction
+    starting_cash: float = float(os.getenv("PROP_DESK_CASH", "100"))  # per faction, at the first season
+    fractional_shares: bool = os.getenv("PROP_DESK_FRACTIONAL", "true").lower() == "true"
+    min_order_dollars: float = float(os.getenv("PROP_DESK_MIN_ORDER", "1"))
+    # A season is a contest window. At the end, each faction keeps its ending equity
+    # (profits reinvested, losses carried) and a new season starts from there.
+    season_days: int = int(os.getenv("PROP_DESK_SEASON_DAYS", "30"))
     # Each faction keeps its own ledger and scorecard under data_dir/<faction>/.
     data_dir: str = os.getenv("PROP_DESK_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
     factions: list[str] = field(default_factory=lambda: [
@@ -67,6 +72,9 @@ class Settings:
 
     # --- Automation ---
     autorun_minutes: int = int(os.getenv("PROP_DESK_AUTORUN_MINUTES", "0"))  # 0 = off
+    # Or run at fixed US-Eastern times on weekdays, e.g. "09:45,12:30,15:30".
+    schedule_et: list[str] = field(default_factory=lambda: [
+        t.strip() for t in os.getenv("PROP_DESK_SCHEDULE_ET", "").split(",") if t.strip()])
     market_hours_only: bool = os.getenv("PROP_DESK_MARKET_HOURS_ONLY", "true").lower() == "true"
     alert_webhook: str = os.getenv("PROP_DESK_ALERT_WEBHOOK", "")  # Slack-compatible incoming webhook
 

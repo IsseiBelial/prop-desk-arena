@@ -27,6 +27,7 @@ from .factions.base import Field
 from .indicators import compute_features
 from .kalshi import make_kalshi
 from .market_data import make_provider
+from .season import Season
 
 log = logging.getLogger(__name__)
 Emit = Callable[[dict], Awaitable[None]]
@@ -42,6 +43,7 @@ class Arena:
         self.kalshi = None
         self.bench_price: float | None = None
         self.factions = [FACTIONS[f](self) for f in settings.factions if f in FACTIONS]
+        self.season = Season(os.path.join(settings.data_dir, "season.json"), settings.season_days)
         self.running = False
         self.transcript: list[dict] = []
         self.verdicts: dict[str, dict[str, str]] = {}
@@ -85,15 +87,30 @@ class Arena:
 
         asyncio.get_running_loop().run_in_executor(None, post)
 
+    def equities(self) -> dict[str, float]:
+        return {f.id: f.broker.equity for f in self.factions}
+
     def standings(self) -> list[dict]:
-        rows = [f.standings() for f in self.factions]
-        rows.sort(key=lambda r: (r["net"], r["accuracy"] or 0, r["total_pnl"]), reverse=True)
+        """Ranked by this season's return (the goal: make the most money), then by net correct calls."""
+        rets = self.season.returns(self.equities()) if self.season.started else {}
+        rows = []
+        for f in self.factions:
+            r = f.standings()
+            r["season_start"] = self.season.start_equity.get(f.id, f.broker.equity)
+            r["season_return_pct"] = rets.get(f.id, 0.0)
+            r["seasons_won"] = sum(1 for h in self.season.history if h["winner"] == f.id)
+            rows.append(r)
+        rows.sort(key=lambda r: (r["season_return_pct"], r["net"], r["accuracy"] or 0), reverse=True)
         return rows
+
+    def season_info(self) -> dict:
+        return self.season.public(self.equities())
 
     async def publish(self):
         for f in self.factions:
             await self.emit({"type": "portfolio", "faction": f.id, **f.broker.summary()})
-        await self.emit({"type": "standings", "factions": self.standings(), "cost_usd": self.cost_usd})
+        await self.emit({"type": "standings", "factions": self.standings(), "cost_usd": self.cost_usd,
+                         "season": self.season_info()})
 
     # ------------------------------------------------------------ the map
     async def scout(self, symbols: list[str] | None) -> Field:
@@ -148,6 +165,11 @@ class Arena:
                 graded = await f.housekeep(fld)
                 if graded:
                     await f.say(f.leader, f"{graded} old call(s) graded. Check the standings.", "chair")
+            if closed := self.season.tick(self.equities()):
+                win = self.faction(closed["winner"]) if closed["winner"] in {f.id for f in self.factions} else None
+                await self.emit({"type": "season_end", **closed, "winner_name": win.name if win else closed["winner"]})
+                self.alert(f"Season {closed['number']} over - " + ", ".join(
+                    f"{r['faction']} {r['return_pct']:+.2f}%" for r in closed["results"]))
             await self.publish()
 
             for f in self.factions:

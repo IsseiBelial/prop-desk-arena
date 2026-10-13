@@ -368,3 +368,39 @@ def test_plan_brain_returns_validated_output(monkeypatch):
     assert isinstance(out, BearCase) and out.verdict == "v" and b.cost_usd == 0.01
     o = seen["options"]
     assert o.tools == [] and o.setting_sources == [] and o.output_format["type"] == "json_schema"
+
+
+# ------------------------------------------------------------- small accounts + seasons
+def test_fractional_shares_for_small_accounts(settings):
+    b = PaperBroker(os.path.join(settings.data_dir, "t", "ledger.json"), 100)
+    r = review_trade(b, "AAPL", "LONG", 230.0, 6.0, settings)
+    assert r.approved and 0 < r.qty < 1 and r.qty * 230 <= 10.0  # capped at 10% of $100
+    b.open("AAPL", "LONG", r, {})
+    b.mark({"AAPL": 260.0})  # target hit -> closed at a profit
+    assert "AAPL" not in b.positions and b.cash > 100
+    settings.fractional_shares = False
+    assert not review_trade(b, "MSFT", "LONG", 230.0, 6.0, settings).approved  # a whole share won't fit
+
+
+def test_season_rollover_reinvests(tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    from prop_desk.season import Season
+    t0 = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    s = Season(str(tmp_path / "season.json"), days=30)
+    assert s.tick({"legion": 100.0, "brood": 100.0}, now=t0) is None and s.number == 1
+    assert s.day(t0 + timedelta(days=9)) == 10
+    assert s.tick({"legion": 112.0, "brood": 95.0}, now=t0 + timedelta(days=29)) is None  # not over yet
+    closed = s.tick({"legion": 120.0, "brood": 90.0}, now=t0 + timedelta(days=30))
+    assert closed["winner"] == "legion" and closed["results"][0]["return_pct"] == 20.0
+    assert s.number == 2 and s.start_equity == {"legion": 120.0, "brood": 90.0}  # profits/losses carried
+    assert Season(str(tmp_path / "season.json"), 30).history[0]["winner"] == "legion"  # persisted
+
+
+def test_arena_standings_rank_by_season_return(settings):
+    a = Arena(settings, None)
+    run(a)
+    rows = a.standings()
+    assert all("season_return_pct" in r for r in rows)
+    assert [r["season_return_pct"] for r in rows] == sorted((r["season_return_pct"] for r in rows), reverse=True)
+    assert a.season_info()["number"] == 1 and a.season_info()["day"] == 1

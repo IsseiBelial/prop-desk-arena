@@ -9,7 +9,9 @@ import { Voice } from "./voice.js";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const money = (v) => (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const kmoney = (v) => "$" + (Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + "M" : Math.round(v).toLocaleString());
+// Small accounts show cents; big ones round to dollars.
+const kmoney = (v) => (v < 0 ? "-$" : "$") + (Math.abs(v) >= 1e6 ? (Math.abs(v) / 1e6).toFixed(2) + "M"
+  : Math.abs(v) >= 1e4 ? Math.round(Math.abs(v)).toLocaleString() : Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const sgn = (v, d = 2) => (v > 0 ? "+" : "") + Number(v).toFixed(d);
 const short = (s) => (s && s.length > 16 ? s.slice(0, 15) + "…" : s || "");
 
@@ -24,7 +26,7 @@ const SCENE_PHASES = new Set(["bear", "round1", "debate", "vote"]);
 const S = {
   agents: {}, factions: [], fmap: {}, standings: [], portfolios: {}, idea: null, votes: { 1: {}, 2: {} },
   models: {}, swarm: null, levels: {}, edge: null, turn: null, view: "map", unitTab: "legion", bookTab: "legion",
-  msgCount: 0, replaying: false, focus: null, labSpot: 0, running: false, settings: {},
+  msgCount: 0, replaying: false, focus: null, labSpot: 0, running: false, settings: {}, season: null,
 };
 let battle, council, conclave, hive;
 const voice = new Voice();
@@ -52,6 +54,7 @@ async function init() {
     `${k.allow_shorts ? "Shorts allowed." : "Long-only."}` + (k.kalshi ? ` Gas (prediction markets) only when a faction made no stock trade; ${k.kalshi_min_edge}¢+ edge after fees.` : "") +
     (st.autorun_minutes ? ` Auto-runs every ${st.autorun_minutes} min.` : "");
   buildTabs();
+  S.season = st.season;
   renderStandings(st.standings);
   for (const f of S.factions) claims(f.id);
   renderBook();
@@ -136,7 +139,13 @@ function handle(e) {
       callout(S.agents.risk, voice.line({ faction: "neutral" }, "contest"), `${e.symbol} is contested`);
       break;
     case "portfolio": S.portfolios[f] = e; claims(f); if (f === S.bookTab) renderBook(); renderResources(); break;
-    case "standings": renderStandings(e.factions); $("#cost").textContent = "$" + (e.cost_usd || 0).toFixed(2); renderRace(); break;
+    case "season_end": {
+      const w = S.fmap[e.winner];
+      addNotice(`Season ${e.number} is over! ` + e.results.map((r) => `${S.fmap[r.faction]?.name || r.faction} ${sgn(r.return_pct)}%`).join(" · ") + ". Profits roll into the next season.");
+      if (w) { const lead = S.agents[w.leader]; callout(lead, voice.line(lead, "win"), `${w.name} wins season ${e.number}`, true); voice.blip("win"); }
+      break;
+    }
+    case "standings": if (e.season) S.season = e.season; renderStandings(e.factions); $("#cost").textContent = "$" + (e.cost_usd || 0).toFixed(2); renderRace(); break;
     case "notice": addNotice(e.text); break;
     case "error": addNotice(e.text); setRunning(false); break;
     case "session_end": {
@@ -165,7 +174,7 @@ function onPhase(e) {
   const f = e.faction || S.turn, p = e.phase;
   if (p === "idle") {
     S.turn = null;
-    setBanner(null, "Round complete. Press R for another.");
+    setBanner(null, `${seasonText()} · round complete. Press R for another.`);
     if (!S.replaying) setTimeout(() => { Object.keys(S.agents).forEach((id) => battle.goHome(id)); battle.select(null); camera("map"); }, 2500);
     return;
   }
@@ -229,7 +238,7 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
 function setBanner(f, text) {
   const b = $("#banner"), fac = S.fmap[f];
   b.style.setProperty("--fc", fac?.color || "#5eead4");
-  $("#bannerFaction").textContent = fac ? fac.name : (S.running ? "ARENA" : "AWAITING ORDERS");
+  $("#bannerFaction").textContent = fac ? fac.name : (S.running ? "ARENA" : seasonText() || "AWAITING ORDERS");
   $("#bannerPhase").textContent = text || "";
   b.classList.remove("flash"); void b.offsetWidth; b.classList.add("flash");
 }
@@ -357,12 +366,23 @@ function claims(f) {
   battle.setClaims(f, [...(p.positions || []).map((x) => x.symbol), ...(p.contracts || []).map((c) => c.ticker)]);
 }
 
+function seasonText() {
+  const z = S.season;
+  return z && z.number ? `SEASON ${z.number} · DAY ${z.day} OF ${z.days}` : "";
+}
+
+function seasonReturn(fid, equity) {
+  const start = S.season?.start_equity?.[fid];
+  return start ? (equity / start - 1) * 100 : 0;
+}
+
 function renderResources() {
   $("#resources").innerHTML = S.factions.map((f) => {
     const p = S.portfolios[f.id] || { equity: 0, total_pnl: 0, positions: [], contracts: [] };
-    return `<div class="res" style="--c:${f.color}" title="${esc(f.name)}: equity, total P&L, positions">
+    const r = seasonReturn(f.id, p.equity);
+    return `<div class="res" style="--c:${f.color}" title="${esc(f.name)}: equity, return this season, open positions">
       <span class="ico">◆</span><span class="eq">${kmoney(p.equity)}</span>
-      <span class="${p.total_pnl >= 0 ? "pos" : "neg"}">${sgn((p.total_pnl / S.settings.starting_cash) * 100)}%</span>
+      <span class="${r >= 0 ? "pos" : "neg"}">${sgn(r)}%</span>
       <span class="sup">${(p.positions || []).length + (p.contracts || []).length}/${S.settings.max_open_positions}</span></div>`;
   }).join("");
 }
@@ -371,14 +391,16 @@ function renderStandings(rows) {
   if (!rows) return;
   S.standings = rows;
   renderResources();
-  const leaderNet = rows[0]?.net;
+  const lead = rows[0] && rows[0].season_return_pct !== rows[rows.length - 1]?.season_return_pct;
   $("#standings").innerHTML = rows.map((r, i) => {
     const f = S.fmap[r.id] || {};
     const pct = r.accuracy == null ? "–" : Math.round(r.accuracy * 100) + "%";
     const form = (r.recent || []).map((x) => `<i class="${x === "W" ? "w" : "l"}"></i>`).join("");
-    return `<div class="fcard ${i === 0 && r.calls && r.net === leaderNet ? "leader" : ""}" style="--c:${r.color}">
-      <div class="rank">#${i + 1}${i === 0 && r.calls ? " 👑" : ""}</div>
-      <div class="fname">${esc(r.name)}</div><div class="motto">${esc(f.motto || "")}</div>
+    const sr = r.season_return_pct ?? 0;
+    return `<div class="fcard ${i === 0 && lead ? "leader" : ""}" style="--c:${r.color}">
+      <div class="rank">#${i + 1}${i === 0 && lead ? " 👑" : ""}</div>
+      <div class="fname">${esc(r.name)}</div><div class="motto">${esc(f.motto || "")}${r.seasons_won ? ` · 🏆×${r.seasons_won}` : ""}</div>
+      <div class="season-ret ${sr >= 0 ? "pos" : "neg"}">${sgn(sr)}%<span>this season · from ${kmoney(r.season_start ?? r.equity)}</span></div>
       <div class="nums">
         <div><label>Net calls</label><b>${r.net > 0 ? "+" : ""}${r.net}</b></div>
         <div><label>Hit rate</label><b>${pct}</b></div>
@@ -388,6 +410,10 @@ function renderStandings(rows) {
         <div><label>AI cost</label><b>$${(r.cost_usd || 0).toFixed(2)}</b></div>
       </div><div class="form">${form}</div></div>`;
   }).join("");
+  const hist = S.season?.history || [];
+  $("#seasonHistory").innerHTML = (seasonText() ? `<b>${seasonText()}</b> · ends ${esc((S.season.ends || "").slice(0, 10))} · winner = highest return; profits roll over` : "") +
+    hist.slice().reverse().map((h) => `<div>Season ${h.number}: ` + h.results.map((x) =>
+      `<span style="color:${S.fmap[x.faction]?.color || "#ccc"}">${esc(S.fmap[x.faction]?.name || x.faction)} ${sgn(x.return_pct)}%${x.faction === h.winner ? " 🏆" : ""}</span>`).join(" · ") + `</div>`).join("");
   const graded = rows.reduce((n, r) => n + r.calls, 0);
   $("#lbNote").textContent = graded ? `${graded} graded faction calls` : "calls are graded after a few days, or when a market settles";
   const legion = rows.find((r) => r.id === "legion");

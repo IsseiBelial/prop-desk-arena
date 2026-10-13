@@ -7,8 +7,9 @@ does it cost to run?**
 
 ![The battlefield](docs/battlefield.png)
 
-> **Paper trading only.** Every faction trades a simulated $100,000 account (`data/<faction>/ledger.json`).
-> Nothing here connects to a real brokerage. This is a research tool, not financial advice.
+> **Paper trading only.** Every faction trades a simulated account that starts at **$100**
+> (`data/<faction>/ledger.json`). Nothing here connects to a real brokerage. This is a research tool, not
+> financial advice.
 
 ## The factions
 
@@ -27,6 +28,23 @@ daily loss.
 faction estimates the probability its own way, needs at least 5¢ of edge after Kalshi's fees, and sizes at a
 quarter of the Kelly bet, capped at 1% of equity per market and 5% in total.
 
+## Seasons: $100 each, 30 days, make the most money
+
+- **Starting stake.** Every faction starts its first season with $100 (`PROP_DESK_CASH`). Stocks are bought in
+  **fractional shares** (`PROP_DESK_FRACTIONAL`, minimum order $1), so a $100 account can hold anything on
+  the watchlist.
+- **The goal.** Each faction tries to make as much money as possible over the season (`PROP_DESK_SEASON_DAYS`,
+  default 30). The standings rank by **return this season**.
+- **Reinvesting.** When a season ends, results are recorded with a 🏆 for the winner, and the next season
+  starts from each faction's ending equity. Profits are reinvested, losses are carried, and position sizes
+  grow or shrink with the account. Open positions carry over.
+- **Running all season.** Use a machine that stays on, such as a spare PC, a mini PC or a small cloud server,
+  with a schedule:
+
+  ```bash
+  PROP_DESK_SCHEDULE_ET="09:45,12:30,15:30" python -m prop_desk.server   # three rounds each weekday, US-Eastern time
+  ```
+
 ## Scoring: "Who called it?"
 
 Every idea a faction considers becomes a **call**, whether it traded or not. Each unit's individual vote is
@@ -38,7 +56,8 @@ graded too.
 - A unit's track record sets its vote weight inside its faction, between 0.5× and 1.5×. Good units earn a
   louder voice.
 
-**Reset** (X) starts a new season: every account and every track record goes back to zero.
+**Reset** (X) starts over completely: every account goes back to the starting stake, and every track record
+and the season history are wiped.
 
 ## Run it
 
@@ -98,7 +117,10 @@ Every Claude call goes through one of two backends. The app picks one automatica
 | `PROP_DESK_MODEL` / `PROP_DESK_EFFORT` | `claude-opus-5-5` / `medium` | `claude-sonnet-5-5` is about half the cost |
 | `PROP_DESK_WATCHLIST` | 12 large caps | the mineral fields |
 | `PROP_DESK_CANDIDATES` | `3` | ideas each faction considers per round |
-| `PROP_DESK_CASH` | `100000` | starting paper cash per faction |
+| `PROP_DESK_CASH` | `100` | each faction's stake at the first season |
+| `PROP_DESK_SEASON_DAYS` | `30` | season length; ending equity rolls into the next season |
+| `PROP_DESK_FRACTIONAL` / `PROP_DESK_MIN_ORDER` | `true` / `1` | fractional shares, smallest order in $ |
+| `PROP_DESK_SCHEDULE_ET` | – | fixed weekday run times, US-Eastern (e.g. `09:45,15:30`) |
 | `PROP_DESK_THRESHOLD` / `PROP_DESK_QUORUM` / `PROP_DESK_MIN_FAMILIES` | `0.30` / `3` / `2` | Iron Legion's voting rules |
 | `PROP_DESK_RISK_PCT`, `_MAX_POS_PCT`, `_MAX_POSITIONS`, `_MAX_PER_SECTOR`, `_MAX_DAILY_LOSS_PCT`, `_EARNINGS_BLACKOUT_DAYS` | 1 / 10 / 8 / 2 / 3 / 3 | Quartermaster's rules |
 | `PROP_DESK_KALSHI` / `PROP_DESK_KALSHI_MIN_EDGE` | `true` / `5` | prediction markets on/off, minimum edge in cents |
@@ -143,7 +165,7 @@ prop_desk/
 
 ## What's tested, and what isn't
 
-- **Tested:** 27 automated tests cover indicators, consensus, every risk rule, Kalshi fees and settlement,
+- **Tested:** 30 automated tests cover indicators, consensus, every risk rule, Kalshi fees and settlement,
   scoring and weights, all three factions end to end, Claude-mode paths using a stand-in model, and recovery
   when Claude or the research agent fails. Full rounds were also run in a headless browser at desktop and
   phone widths.

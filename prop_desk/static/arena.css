@@ -212,6 +212,10 @@ button { font: inherit; cursor: pointer; }
 .fcard .rank { position: absolute; top: 8px; right: 10px; font: 900 22px var(--mono); color: color-mix(in srgb, var(--c) 70%, #fff); }
 .fcard .fname { font: 900 15px var(--mono); color: var(--c); letter-spacing: .06em; }
 .fcard .motto { font-size: 11px; color: var(--muted); font-style: italic; margin-bottom: 8px; }
+.fcard .season-ret { font: 900 26px var(--mono); margin: 2px 0 8px; display: flex; align-items: baseline; gap: 8px; }
+.fcard .season-ret span { font: 600 11px Inter, system-ui, sans-serif; color: var(--muted); }
+.season-history { margin-top: 10px; font: 12px var(--mono); color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.season-history b { color: var(--accent); }
 .fcard .nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; }
 .fcard .nums div { display: flex; flex-direction: column; }
 .fcard .nums label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }

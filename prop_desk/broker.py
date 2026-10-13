@@ -28,7 +28,7 @@ def _build(cls, d: dict):
 class Position:
     symbol: str
     side: str  # LONG | SHORT
-    qty: int
+    qty: float  # fractional shares allowed
     entry: float
     stop: float
     target: float
@@ -69,7 +69,7 @@ class ContractPosition:
 @dataclass
 class RiskReview:
     approved: bool
-    qty: int = 0
+    qty: float = 0
     entry: float = 0.0
     stop: float = 0.0
     target: float = 0.0
@@ -163,8 +163,8 @@ class PaperBroker:
         return closed
 
     def open(self, symbol: str, side: str, review: RiskReview, votes: dict, sector: str = "") -> dict:
-        cost = review.qty * review.entry
-        self.cash += -cost if side == "LONG" else cost
+        cost = round(review.qty * review.entry, 2)
+        self.cash = round(self.cash - cost if side == "LONG" else self.cash + cost, 2)
         self.positions[symbol] = Position(symbol, side, review.qty, review.entry, review.stop,
                                           review.target, _now(), review.entry, votes, sector)
         t = {"time": _now(), "symbol": symbol, "action": "BUY" if side == "LONG" else "SELL SHORT",
@@ -176,7 +176,7 @@ class PaperBroker:
     def close(self, symbol: str, price: float, why: str) -> dict:
         p = self.positions.pop(symbol)
         p.last = price
-        self.cash += price * p.qty if p.side == "LONG" else -price * p.qty
+        self.cash = round(self.cash + (price * p.qty if p.side == "LONG" else -price * p.qty), 2)
         t = {"time": _now(), "symbol": symbol, "action": "SELL" if p.side == "LONG" else "BUY TO COVER",
              "qty": p.qty, "price": round(price, 2), "pnl": p.pnl, "reason": why}
         self.trades.append(t)
@@ -261,20 +261,25 @@ def review_trade(broker: PaperBroker, symbol: str, side: str, price: float, atr:
     eq = broker.equity
     risk_pct = s.risk_per_trade_pct if risk_on else s.risk_per_trade_pct / 2
     risk_budget = eq * risk_pct / 100
-    qty = int(risk_budget // stop_dist)
+    frac = s.fractional_shares
+    # Fractional shares (as most brokers now offer) let small accounts hold any stock.
+    shares = (lambda q: math.floor(q * 10000) / 10000) if frac else (lambda q: float(int(q)))
+    qty = shares(risk_budget / stop_dist)
     if not risk_on:
         notes.append("Market is in risk-off mode (SPY below its 200-day average) - half size.")
-    notes.append(f"Risking {risk_pct:g}% of equity (${risk_budget:,.0f}) with a 2×ATR stop at {stop}.")
+    notes.append(f"Risking {risk_pct:g}% of equity (${risk_budget:,.2f}) with a 2×ATR stop at {stop}.")
 
-    cap = int(eq * s.max_position_pct / 100 // price)
+    cap = shares(eq * s.max_position_pct / 100 / price)
     if qty > cap:
         qty = cap
         notes.append(f"Capped at {s.max_position_pct}% of equity.")
     if side == "LONG" and qty * price > broker.cash:
-        qty = int(broker.cash // price)
+        qty = shares(broker.cash / price)
         notes.append("Trimmed to available cash.")
-    if qty < 1:
-        return RiskReview(False, notes=notes + ["Position size rounds to zero shares."])
+    if (frac and qty * price < s.min_order_dollars) or (not frac and qty < 1):
+        return RiskReview(False, notes=notes + [f"Position is too small to place (${qty * price:,.2f})."])
+    if not frac:
+        qty = int(qty)
 
     notes.append(f"Target {target} (3×ATR, 1.5R).")
     return RiskReview(True, qty, round(price, 2), stop, target, round(qty * stop_dist, 2), notes=notes)
