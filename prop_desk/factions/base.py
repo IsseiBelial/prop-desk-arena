@@ -15,7 +15,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 
 from ..agents import personas as P
-from ..agents.brain import ClaudeBrain
+from ..agents.brain import make_brain
 from ..broker import PaperBroker, review_contract, review_trade
 from ..indicators import ichimoku
 from ..kalshi import Contract
@@ -55,7 +55,7 @@ class Faction:
         root = os.path.join(self.s.data_dir, self.id)
         self.broker = PaperBroker(os.path.join(root, "ledger.json"), self.s.starting_cash)
         self.scorecard = Scorecard(os.path.join(root, "scorecard.json"), self.s.call_horizon_days)
-        self.brain = ClaudeBrain(self.s.model, self.s.effort) if arena.use_claude else None
+        self.brain = make_brain(arena.backend, self.s.model, self.s.effort)
         self.research_cost = 0.0
 
     # ------------------------------------------------------------ identity

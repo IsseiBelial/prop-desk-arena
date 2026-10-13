@@ -44,7 +44,7 @@ graded too.
 
 ```bash
 pip install -r prop_desk/requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...      # optional; without it every faction runs on built-in rules
+claude auth login                        # once, with Claude Code: lets the Arena use your Claude plan (or set ANTHROPIC_API_KEY)
 python -m prop_desk.server               # open http://localhost:8000
 ```
 
@@ -68,16 +68,27 @@ engine with a different pitch and pace per faction. No audio files are used.
 
 ## Claude: which harness, and how it's paid for
 
-- **Council votes and narration** use plain Messages API calls with structured outputs (`agents/brain.py`).
-  A vote on a fixed set of facts doesn't need an agent loop, and this way is faster and cheaper.
-- **Iron Legion's research** runs on the **Claude Agent SDK** (`agents/research_agent.py`). It's an open-ended
-  hunt where Claude decides which tools to call. Its tools are an in-process MCP server over the desk's own data
-  (screen, symbol reports, prediction markets) plus web search. It has no shell and no file access, and each hunt
-  has a spending cap (`PROP_DESK_RESEARCH_BUDGET`, default $1).
-- **Authentication: use a Console API key.** Anthropic's policy is that apps built on the Agent SDK, internal
-  tools included, authenticate with an API key, not a claude.ai login. API usage is billed separately from a
-  Claude Team or Enterprise subscription. Team and Max plans include monthly API credits, which cover this app.
-  Running the app locally or in the cloud makes no difference here.
+Every Claude call goes through one of two backends. The app picks one automatically, or you can force it with
+`PROP_DESK_AI`.
+
+| `PROP_DESK_AI` | Uses | Paid by |
+|---|---|---|
+| `plan` | The **Claude Agent SDK signed in with your Claude plan** (sign in once with Claude Code: `claude auth login`). No API key needed. | Your plan's usage limits |
+| `api` | The Claude API with a Console API key (`ANTHROPIC_API_KEY`) | Per token, or from the monthly API credits that Team and Max plans include |
+| `rules` | No Claude at all. Every faction uses its built-in rules. | Free |
+| `auto` (default) | An API key if one is set, otherwise your Claude login, otherwise rules | |
+
+- **Council votes and narration** ask for schema-validated answers (`agents/brain.py`). With an API key they call
+  the API directly; on your plan they go through the Agent SDK with no tools enabled.
+- **Iron Legion's research** is a real Agent SDK agent (`agents/research_agent.py`): an open-ended hunt where
+  Claude decides which tools to call. Its tools are an in-process MCP server over the desk's own data (screen,
+  symbol reports, prediction markets) plus web search. It has no shell and no file access, and each hunt has a
+  spending cap (`PROP_DESK_RESEARCH_BUDGET`, default $1).
+- Running on your plan, each call starts a small Claude Code process, so it's a little slower (about 5–10
+  seconds per vote, at most 3 at once). Opus uses up plan limits faster; `PROP_DESK_MODEL=claude-sonnet-5-5`
+  stretches them. The AI cost shown in the app is what the same usage would cost at API prices.
+- References: [Use the Claude Agent SDK with your Claude plan](https://support.claude.com/en/articles/15036540)
+  and [monthly API credits](https://support.claude.com/en/articles/17154008).
 
 ## Configuration (environment variables)
 
@@ -132,14 +143,15 @@ prop_desk/
 
 ## What's tested, and what isn't
 
-- **Tested:** 25 automated tests cover indicators, consensus, every risk rule, Kalshi fees and settlement,
+- **Tested:** 27 automated tests cover indicators, consensus, every risk rule, Kalshi fees and settlement,
   scoring and weights, all three factions end to end, Claude-mode paths using a stand-in model, and recovery
   when Claude or the research agent fails. Full rounds were also run in a headless browser at desktop and
   phone widths.
 - **Not yet tested:**
   - Yahoo Finance and Kalshi's live API were unreachable from the build environment, so only simulated data
     has been run. The Kalshi client follows Kalshi's documented public market-data format.
-  - No full Claude-mode round has been run against the live API.
+  - Live Claude was checked with single calls only: one Agent SDK research hunt, and Council votes through
+    the plan backend. A full Claude-mode round hasn't been run yet.
 
 ## Going live (not built, on purpose)
 

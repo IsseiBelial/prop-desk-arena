@@ -20,7 +20,7 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
-from .agents.brain import has_credentials
+from .agents.brain import detect_backend
 from .config import Settings
 from .factions import FACTIONS
 from .factions.base import Field
@@ -36,7 +36,8 @@ class Arena:
     def __init__(self, settings: Settings, emit: Emit | None):
         self.s = settings
         self._emit = emit
-        self.use_claude = settings.ai_mode == "claude" or (settings.ai_mode == "auto" and has_credentials())
+        self.backend = detect_backend(settings.ai_mode)  # "api", "plan" or None (rules)
+        self.use_claude = self.backend is not None
         self.provider = None
         self.kalshi = None
         self.bench_price: float | None = None
@@ -47,7 +48,11 @@ class Arena:
 
     @property
     def mode(self) -> str:
-        return f"Claude ({self.s.model})" if self.use_claude else "Rules (offline)"
+        if self.backend == "plan":
+            return f"Claude plan · {self.s.model}"
+        if self.backend == "api":
+            return f"Claude API · {self.s.model}"
+        return "Rules (offline)"
 
     @property
     def cost_usd(self) -> float:

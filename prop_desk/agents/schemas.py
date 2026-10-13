@@ -1,7 +1,7 @@
 """Structured outputs the agents must return (validated JSON, never free text)."""
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 Stance = Literal["LONG", "SHORT", "PASS"]
 
@@ -23,8 +23,8 @@ class NewsDigest(BaseModel):
 class Opinion(BaseModel):
     """A trader's vote on a pitch."""
     stance: Stance
-    conviction: int  # 0-100
-    headline: str  # one sentence the floor hears first
+    conviction: int = Field(description="0-100. 80+ = would put your own book on it; under 40 = weak; 0 for PASS.")
+    headline: str = Field(description="One punchy sentence, the way you'd say it across the desk.")
     reasoning: str
     key_signals: list[str]
     concerns: list[str]
@@ -39,7 +39,7 @@ class DeskMemo(BaseModel):
 
 class BearCase(BaseModel):
     """The devil's advocate's case against a pitch."""
-    verdict: str  # one punchy sentence
+    verdict: str = Field(description="One punchy sentence.")
     arguments: list[str]
     what_would_prove_me_wrong: str
 
@@ -47,8 +47,8 @@ class BearCase(BaseModel):
 class ContractOpinion(BaseModel):
     """A trader's vote on a prediction market."""
     stance: Literal["YES", "NO", "PASS"]
-    probability: int  # your estimate (0-100) that the event resolves YES
-    conviction: int  # 0-100
+    probability: int = Field(description="Your estimate, 0-100, that the event resolves YES.")
+    conviction: int = Field(description="0-100. 80+ = very confident; under 40 = weak; 0 for PASS.")
     headline: str
     reasoning: str
     key_signals: list[str]
@@ -73,7 +73,7 @@ class StockSlate(BaseModel):
 class MarketIdea(BaseModel):
     ticker: str
     side: Literal["YES", "NO"]
-    fair_probability: int  # researcher's estimate that it resolves YES
+    fair_probability: int = Field(description="Your estimate, 0-100, that the market resolves YES.")
     thesis: str
     evidence: list[str]
     risks: list[str]

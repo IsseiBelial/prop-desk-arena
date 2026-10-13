@@ -10,9 +10,9 @@ def _env_list(name: str, default: str) -> list[str]:
 @dataclass
 class Settings:
     # --- AI ---
-    # "auto": use Claude when an API key is present, otherwise run the
-    # built-in rule-based agents so the desk still works offline.
-    ai_mode: str = os.getenv("PROP_DESK_AI", "auto")  # auto | claude | rules
+    # auto: an API key if one is set, otherwise your Claude plan login (Claude Code /
+    # Agent SDK), otherwise the built-in rule-based agents so the desk still works offline.
+    ai_mode: str = os.getenv("PROP_DESK_AI", "auto")  # auto | api | plan | rules
     model: str = os.getenv("PROP_DESK_MODEL", "claude-opus-5-5")
     effort: str = os.getenv("PROP_DESK_EFFORT", "medium")  # low | medium | high
 

@@ -328,3 +328,43 @@ def test_failures_fall_back_to_rules(settings, fake_research):
     assert any(e["type"] == "notice" for e in ev)
     assert not any(e["type"] == "error" for e in ev)
     assert len([e for e in ev if e["type"] == "tally" and not e["symbol"].startswith("SIM")]) == 4
+
+
+# ------------------------------------------------------------- Claude backends
+def test_backend_detection(monkeypatch):
+    from prop_desk.agents import brain
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setattr(brain.os.path, "isdir", lambda p: False)
+    monkeypatch.setattr(brain, "plan_logged_in", lambda: False)
+    assert brain.detect_backend("auto") is None
+    assert brain.detect_backend("rules") is None
+    monkeypatch.setattr(brain, "plan_logged_in", lambda: True)
+    assert brain.detect_backend("auto") == "plan"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    assert brain.detect_backend("auto") == "api"  # an API key wins
+    assert brain.detect_backend("plan") == "plan" and brain.detect_backend("claude") == "api"
+
+
+def test_plan_brain_returns_validated_output(monkeypatch):
+    import claude_agent_sdk
+
+    from prop_desk.agents.brain import PlanBrain
+
+    class FakeResult:
+        def __init__(self, out):
+            self.structured_output, self.total_cost_usd, self.is_error, self.subtype = out, 0.01, False, "success"
+
+    seen = {}
+
+    async def fake_query(prompt, options):
+        seen["options"] = options
+        yield FakeResult({"verdict": "v", "arguments": ["a"], "what_would_prove_me_wrong": "w"})
+
+    monkeypatch.setattr(claude_agent_sdk, "query", fake_query)
+    monkeypatch.setattr(claude_agent_sdk, "ResultMessage", FakeResult)
+    b = PlanBrain("claude-opus-5-5", "low")
+    out = asyncio.run(b.think("system", "prompt", BearCase))
+    assert isinstance(out, BearCase) and out.verdict == "v" and b.cost_usd == 0.01
+    o = seen["options"]
+    assert o.tools == [] and o.setting_sources == [] and o.output_format["type"] == "json_schema"
