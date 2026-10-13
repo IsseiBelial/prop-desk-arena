@@ -1,14 +1,17 @@
 import asyncio
+import os
 
 import pytest
 
-from prop_desk import desk as desk_mod
+from prop_desk.factions import legion as legion_mod
+from prop_desk.factions.ascendant import analog_forecast, pool
+from prop_desk.factions.brood import drone_votes
 from prop_desk.agents.schemas import (BearCase, ContractOpinion, DeskMemo, MarketIdea, MarketSlate, NewsDigest,
                                       Opinion, Pitch, StockIdea, StockSlate)
 from prop_desk.broker import PaperBroker, review_contract, review_trade
 from prop_desk.config import Settings
 from prop_desk.consensus import tally
-from prop_desk.desk import Desk
+from prop_desk.desk import Arena
 from prop_desk.indicators import compute_features
 from prop_desk.kalshi import Contract, SyntheticKalshi, _num, edge_cents, fee_dollars
 from prop_desk.market_data import SyntheticProvider
@@ -29,9 +32,7 @@ def contract(**kw):
 def settings(tmp_path):
     s = Settings()
     s.ai_mode, s.data_source, s.kalshi_data, s.pace = "rules", "synthetic", "synthetic", 0
-    s.ledger_path = str(tmp_path / "ledger.json")
-    s.scorecard_path = str(tmp_path / "scorecard.json")
-    s.sessions_dir = str(tmp_path / "sessions")
+    s.data_dir = str(tmp_path)
     s.watchlist = ["AAPL", "MSFT", "XOM", "JPM"]
     s.candidates_per_session = 2
     s.alert_webhook = ""
@@ -90,20 +91,20 @@ def test_track_record_weights_change_the_score():
 
 # ------------------------------------------------------------- risk
 def test_risk_sizes_by_atr_and_caps_position(settings):
-    b = PaperBroker(settings.ledger_path, 100_000)
+    b = PaperBroker(os.path.join(settings.data_dir, "t", "ledger.json"), 100_000)
     r = review_trade(b, "AAPL", "LONG", price=100.0, atr=2.0, s=settings)
     # 1% of 100k = $1,000 risk / $4 stop distance = 250 shares, but 10% cap = 100 shares
     assert r.approved and r.qty == 100 and r.stop == 96.0 and r.target == 106.0
 
 
 def test_risk_off_halves_size(settings):
-    b = PaperBroker(settings.ledger_path, 100_000)
+    b = PaperBroker(os.path.join(settings.data_dir, "t", "ledger.json"), 100_000)
     r = review_trade(b, "AAPL", "LONG", 100.0, 10.0, settings, risk_on=False)
     assert r.qty == 25  # $500 / $20 stop distance
 
 
 def test_risk_vetoes(settings):
-    b = PaperBroker(settings.ledger_path, 100_000)
+    b = PaperBroker(os.path.join(settings.data_dir, "t", "ledger.json"), 100_000)
     r = review_trade(b, "AAPL", "LONG", 100.0, 2.0, settings, sector="Tech")
     b.open("AAPL", "LONG", r, {}, "Tech")
     assert not review_trade(b, "AAPL", "LONG", 100.0, 2.0, settings).approved  # no doubling up
@@ -117,10 +118,10 @@ def test_risk_vetoes(settings):
 
 
 def test_ledger_persists(settings):
-    b = PaperBroker(settings.ledger_path, 100_000)
+    b = PaperBroker(os.path.join(settings.data_dir, "t", "ledger.json"), 100_000)
     b.open("AAPL", "LONG", review_trade(b, "AAPL", "LONG", 100.0, 2.0, settings), {})
     b.snapshot(500.0)
-    again = PaperBroker(settings.ledger_path, 100_000)
+    again = PaperBroker(os.path.join(settings.data_dir, "t", "ledger.json"), 100_000)
     assert "AAPL" in again.positions and again.cash == b.cash and len(again.history) == 1
 
 
@@ -138,7 +139,7 @@ def test_kalshi_price_formats():
 
 
 def test_contract_sizing_and_settlement(settings):
-    b = PaperBroker(settings.ledger_path, 100_000)
+    b = PaperBroker(os.path.join(settings.data_dir, "t", "ledger.json"), 100_000)
     c = contract()
     assert not review_contract(b, c, "YES", 25, settings).approved  # no edge
     r = review_contract(b, c, "YES", 60, settings)
@@ -173,41 +174,75 @@ def test_scorecard_grades_calls_and_weights(tmp_path):
     assert Scorecard(str(tmp_path / "s.json")).stats()["good"]["calls"] == 6  # persisted
 
 
+# ------------------------------------------------------------- faction models
+def test_log_odds_pooling():
+    assert pool({"a": 0.5, "b": 0.5}, {}) == pytest.approx(0.5)
+    assert pool({"a": 0.7, "b": 0.7}, {}) > 0.7  # agreeing independent evidence compounds
+    assert pool({"a": 0.9, "b": 0.1}, {"a": 3, "b": 1}) > 0.5  # weights matter
+
+
+def test_analog_forecast_is_a_probability():
+    p, er = analog_forecast(SyntheticProvider().bars("AAPL").close.to_numpy())
+    assert 0.15 <= p <= 0.85 and -50 < er < 50
+
+
+def test_every_drone_votes():
+    prov = SyntheticProvider()
+    snap = prov.snapshot("MSFT")
+    votes = drone_votes(compute_features(snap.bars, prov.bars("SPY")), snap)
+    from prop_desk.agents.personas import DRONES
+    assert set(votes) == {d for d, *_ in DRONES} and set(votes.values()) <= {-1, 0, 1}
+
+
 # ------------------------------------------------------------- full sessions
-def run(desk, symbols=None):
+def run(arena, symbols=None):
     events = []
 
     async def emit(e):
         events.append(e)
 
-    desk._emit = emit
-    asyncio.run(desk.run_session(symbols))
+    arena._emit = emit
+    asyncio.run(arena.run_session(symbols))
     return events
 
 
-def test_offline_session_runs_end_to_end(settings):
-    d = Desk(settings, None)
-    ev = run(d)
-    kinds = [e["type"] for e in ev]
-    assert "error" not in kinds and "session_end" in kinds
+def test_arena_session_runs_all_three_factions(settings):
+    a = Arena(settings, None)
+    ev = run(a)
+    assert not [e for e in ev if e["type"] == "error"]
+    assert [e["faction"] for e in ev if e["type"] == "turn"] == ["legion", "ascendant", "brood"]
+    assert any(e["type"] == "model" for e in ev) and any(e["type"] == "swarm_vote" for e in ev)
     assert any(e["type"] == "message" and e["agent"] == "bear" for e in ev)  # devil's advocate spoke
-    stock_tallies = [e for e in ev if e["type"] == "tally" and not e["symbol"].startswith("SIM")]
-    assert len(stock_tallies) == 4  # 2 ideas x 2 rounds
-    assert len(d.scorecard.calls) >= 2  # every idea becomes a call
-    assert d.broker.history  # equity curve point recorded
-    import os
+    standings = [e for e in ev if e["type"] == "standings"][-1]["factions"]
+    assert {r["id"] for r in standings} == {"legion", "ascendant", "brood"}
+    for f in a.factions:  # separate books, every idea recorded as a faction call
+        assert os.path.exists(os.path.join(settings.data_dir, f.id, "ledger.json"))
+        assert f.scorecard.calls and all(f.id in c["votes"] for c in f.scorecard.calls)
+        assert f.broker.history
     assert os.listdir(settings.sessions_dir)  # transcript saved
 
 
-def test_markets_round_runs_when_no_stock_trade(settings):
+def test_calls_get_graded_next_session(settings):
+    settings.call_horizon_days = 0
+    a = Arena(settings, None)
+    run(a)
+    run(a)
+    standings = a.standings()
+    assert any(r["units"] for r in standings)
+    graded = sum(1 for f in a.factions for c in f.scorecard.calls if c["outcome"])
+    assert graded > 0
+
+
+def test_legion_goes_for_gas_when_no_stock_trade(settings):
+    settings.factions = ["legion"]
     settings.min_agreeing_traders = 6  # impossible -> no stock trade
-    ev = run(Desk(settings, None))
+    ev = run(Arena(settings, None))
     assert any(e["type"] == "phase" and e["phase"] == "markets" for e in ev)
     assert not any(e["type"] == "error" for e in ev)
 
 
 class FakeBrain:
-    """Stands in for Claude on the Council: returns canned structured outputs."""
+    """Stands in for Claude: returns canned structured outputs."""
     cost_usd = 0.0
 
     def __init__(self, fail=False):
@@ -250,43 +285,46 @@ class FakeResearch:
 @pytest.fixture
 def fake_research(monkeypatch):
     FakeResearch.fail = False
-    monkeypatch.setattr(desk_mod, "ResearchAgent", FakeResearch)
+    monkeypatch.setattr(legion_mod, "ResearchAgent", FakeResearch)
     return FakeResearch
 
 
+def legion_with(settings, brain):
+    settings.factions = ["legion"]
+    a = Arena(settings, None)
+    a.faction("legion").brain = brain
+    return a, a.faction("legion")
+
+
 def test_claude_path_uses_model_outputs(settings, fake_research):
-    d = Desk(settings, None)
-    d.brain = FakeBrain()
-    ev = run(d)
+    a, legion = legion_with(settings, FakeBrain())
+    ev = run(a)
     texts = [e["text"] for e in ev if e["type"] == "message"]
     assert "AI hunt" in " ".join(texts) and any("AI memo" in t for t in texts) and any("AI bear" in t for t in texts)
-    assert d.brain.calls.count("Opinion") == 10  # 1 idea x 5 traders x 2 rounds
+    assert legion.brain.calls.count("Opinion") == 10  # 1 idea x 5 traders x 2 rounds
     assert [e for e in ev if e["type"] == "order"]  # unanimous 80 -> trade placed
-    assert d.cost_usd == 0.25  # research agent spend is counted
+    assert a.cost_usd == 0.25  # research agent spend is counted
 
 
 def test_claude_markets_round_trades_and_settles(settings, fake_research, monkeypatch):
     settings.min_agreeing_traders = 6
-    d = Desk(settings, None)
-    d.brain = FakeBrain()
-    ev = run(d)
+    a, legion = legion_with(settings, FakeBrain())
+    ev = run(a)
     orders = [e for e in ev if e["type"] == "order"]
     assert orders and orders[0]["kind"] == "contract"
     ticker = orders[0]["symbol"]
     settled = SyntheticKalshi().market(ticker)
     settled.result, settled.status = "yes", "settled"
-    monkeypatch.setattr(d.kalshi, "market", lambda t: settled)
-    run(d)
-    assert any(t.get("action") == "SETTLED YES" for t in d.broker.trades)
-    graded = [c for c in d.scorecard.calls if c["kind"] == "contract" and c["outcome"] == "yes"]
-    assert graded
+    monkeypatch.setattr(a.kalshi, "market", lambda t: settled)
+    run(a)
+    assert any(t.get("action") == "SETTLED YES" for t in legion.broker.trades)
+    assert [c for c in legion.scorecard.calls if c["kind"] == "contract" and c["outcome"] == "yes"]
 
 
 def test_failures_fall_back_to_rules(settings, fake_research):
     fake_research.fail = True
-    d = Desk(settings, None)
-    d.brain = FakeBrain(fail=True)
-    ev = run(d, None)
+    a, _ = legion_with(settings, FakeBrain(fail=True))
+    ev = run(a)
     assert any(e["type"] == "notice" for e in ev)
     assert not any(e["type"] == "error" for e in ev)
     assert len([e for e in ev if e["type"] == "tally" and not e["symbol"].startswith("SIM")]) == 4

@@ -32,6 +32,10 @@ class Scorecard:
         with open(self.path, "w") as f:
             json.dump(self.calls[-3000:], f)
 
+    def reset(self) -> None:
+        self.calls = []
+        self.save()
+
     def record(self, kind: str, key: str, title: str, price: float, votes: dict[str, str],
                traded: bool, due: str | None = None) -> None:
         now = datetime.now(timezone.utc)

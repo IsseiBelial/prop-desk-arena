@@ -78,3 +78,40 @@ export function equityChart(svg, history) {
     <path d="${path(us)}" fill="none" stroke="#a78bfa" stroke-width="2.4"/>`;
   return { us: us[us.length - 1], spy: spy[spy.length - 1] };
 }
+
+// The race: every faction's equity (% from its first point) on one chart, plus SPY.
+export function raceChart(svg, series) {
+  // series: [{id, name, color, history}]
+  const W = Math.max(300, Math.round(svg.clientWidth || 600)), H = 210;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const P = { l: 42, r: 70, t: 12, b: 18 };
+  const lines = series.map((s) => {
+    const h = (s.history || []).filter((p) => p.equity != null);
+    const e0 = h[0]?.equity;
+    return { ...s, pts: h.map((p) => ({ t: Date.parse(p.t), v: (p.equity / e0 - 1) * 100, b: p.bench })) };
+  }).filter((s) => s.pts.length);
+  if (!lines.length || lines.every((s) => s.pts.length < 2)) {
+    svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" class="axis">The race starts after a session or two.</text>`;
+    return null;
+  }
+  // SPY from the longest history.
+  const ref = lines.reduce((a, b) => (b.pts.length > a.pts.length ? b : a));
+  const b0 = ref.pts.find((p) => p.b)?.b;
+  const spy = b0 ? ref.pts.filter((p) => p.b).map((p) => ({ t: p.t, v: (p.b / b0 - 1) * 100 })) : [];
+  const all = lines.flatMap((s) => s.pts).concat(spy);
+  const t0 = Math.min(...all.map((p) => p.t)), t1 = Math.max(...all.map((p) => p.t)) || t0 + 1;
+  let lo = Math.min(0, ...all.map((p) => p.v)), hi = Math.max(0, ...all.map((p) => p.v));
+  if (hi - lo < 0.5) { hi += 0.25; lo -= 0.25; }
+  const x = (t) => P.l + ((t - t0) / (t1 - t0 || 1)) * (W - P.l - P.r);
+  const y = (v) => P.t + (1 - (v - lo) / (hi - lo)) * (H - P.t - P.b);
+  const path = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+  const tags = lines.map((s) => { const p = s.pts[s.pts.length - 1];
+    return `<circle cx="${x(p.t)}" cy="${y(p.v)}" r="3.5" fill="${s.color}"/>
+      <text x="${x(p.t) + 6}" y="${y(p.v) + 4}" class="race-tag" fill="${s.color}">${p.v >= 0 ? "+" : ""}${p.v.toFixed(2)}%</text>`; }).join("");
+  svg.innerHTML = `<line x1="${P.l}" x2="${W - P.r}" y1="${y(0)}" y2="${y(0)}" stroke="#334155" stroke-dasharray="3 3"/>
+    <text x="${P.l - 6}" y="${y(hi) + 4}" text-anchor="end" class="axis">${hi.toFixed(1)}%</text>
+    <text x="${P.l - 6}" y="${y(lo) + 4}" text-anchor="end" class="axis">${lo.toFixed(1)}%</text>
+    ${spy.length > 1 ? `<path d="${path(spy)}" fill="none" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="4 3"/>` : ""}
+    ${lines.map((s) => `<path d="${path(s.pts)}" fill="none" stroke="${s.color}" stroke-width="2.4"/>`).join("")}${tags}`;
+  return true;
+}

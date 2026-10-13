@@ -3,62 +3,85 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prop Desk</title>
+<title>Prop Desk Arena</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/floor.css">
+<link rel="stylesheet" href="/static/arena.css">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo">◆</span> PROP DESK <span class="badge paper">PAPER</span></div>
+  <div class="brand"><span class="logo">◆</span> PROP DESK <span class="arena">ARENA</span> <span class="badge paper">PAPER</span></div>
+  <div class="resources" id="resources"></div>
   <div class="badges">
     <span id="mode" class="badge">…</span>
     <span id="datasrc" class="badge">data: …</span>
     <span id="regime" class="badge hidden"></span>
+    <span class="badge cost">AI <b id="cost">$0.00</b></span>
   </div>
-  <div class="stats">
-    <div><label>Equity</label><b id="equity">–</b></div>
-    <div><label>Day P&amp;L</label><b id="daypnl">–</b></div>
-    <div><label>Total P&amp;L</label><b id="totpnl">–</b></div>
-    <div><label>Council hit rate</label><b id="hitrate">–</b></div>
-    <div><label>AI cost</label><b id="cost">$0.00</b></div>
-  </div>
-  <form class="controls" id="runform">
-    <input id="symbols" placeholder="Tickers (optional) e.g. NVDA, XOM" autocomplete="off">
-    <button id="runbtn" type="submit">Run session</button>
-    <button id="resetbtn" type="button" class="ghost" title="Reset paper account">Reset</button>
-  </form>
 </header>
 
-<nav class="pipeline" id="pipeline">
-  <div data-p="housekeeping">Housekeeping</div><div data-p="research">Research</div><div data-p="pitch">Pitch</div>
-  <div data-p="bear">Bear case</div><div data-p="round1">Round 1 · blind</div><div data-p="debate">Debate</div>
-  <div data-p="vote">Consensus</div><div data-p="risk">Risk</div><div data-p="execute">Execute</div>
-  <div data-p="markets" class="mk">Prediction markets</div>
-</nav>
+<div class="banner" id="banner"><span id="bannerFaction">AWAITING ORDERS</span><span id="bannerPhase">Press Run session (R) to start a round.</span></div>
 
 <main class="grid">
   <section class="panel stage-panel">
     <div class="stage-head">
       <div class="tabs" role="tablist">
-        <button class="tab active" data-view="ship" role="tab">🚀 Spaceship</button>
-        <button class="tab" data-view="council" role="tab">⚖️ The Council</button>
+        <button class="tab active" data-view="map" role="tab">🗺 Battlefield</button>
+        <button class="tab" data-view="legion" role="tab">⚔ War Room</button>
+        <button class="tab" data-view="ascendant" role="tab">✦ Conclave</button>
+        <button class="tab" data-view="brood" role="tab">☣ Hive Mind</button>
       </div>
       <label class="auto"><input type="checkbox" id="autocam" checked> Auto camera</label>
     </div>
     <div class="stage" id="stage">
-      <div class="view" id="view-ship"><svg id="ship" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg></div>
-      <div class="view hidden" id="view-council"><svg id="council" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div class="view" id="view-map"><svg id="map" viewBox="0 0 1200 720" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div class="view hidden" id="view-legion"><svg id="warroom" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div class="view hidden" id="view-ascendant"><svg id="conclave" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div class="view hidden" id="view-brood"><svg id="hive" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg></div>
       <div class="bubbles" id="bubbles"></div>
     </div>
+    <!-- RTS console -->
+    <div class="console">
+      <div class="minimap"><svg id="minimap" viewBox="0 0 1200 720" preserveAspectRatio="none"></svg></div>
+      <div class="portrait">
+        <div class="frame" id="portraitFrame"><svg id="portraitSvg" viewBox="-40 -80 80 92"></svg><div class="scan"></div></div>
+        <div class="who">
+          <div class="pname" id="pname">—</div>
+          <div class="prole" id="prole">Select a unit or run a session</div>
+          <div class="quote" id="quote"></div>
+          <div class="subtitle" id="subtitle"></div>
+        </div>
+      </div>
+      <div class="commands" id="commands">
+        <button id="runbtn" data-key="R" title="Run session (R)"><i>▶</i><span>Run</span><kbd>R</kbd></button>
+        <button data-cam="map" data-key="M" title="Battlefield (M)"><i>🗺</i><span>Map</span><kbd>M</kbd></button>
+        <button id="soundbtn" data-key="S" title="Voices & sound (S)"><i>🔇</i><span>Sound</span><kbd>S</kbd></button>
+        <button data-cam="legion" data-key="1" title="War Room (1)"><i>⚔</i><span>Legion</span><kbd>1</kbd></button>
+        <button data-cam="ascendant" data-key="2" title="Conclave (2)"><i>✦</i><span>Ascend.</span><kbd>2</kbd></button>
+        <button data-cam="brood" data-key="3" title="Hive Mind (3)"><i>☣</i><span>Brood</span><kbd>3</kbd></button>
+        <button id="focusbtn" data-key="F" title="Pick tickers (F)"><i>🎯</i><span>Focus</span><kbd>F</kbd></button>
+        <button id="camkey" data-key="A" title="Auto camera (A)"><i>🎥</i><span>Auto cam</span><kbd>A</kbd></button>
+        <button id="resetbtn" data-key="X" title="New season - reset all accounts (X)" class="danger"><i>⟲</i><span>Reset</span><kbd>X</kbd></button>
+      </div>
+    </div>
+    <form id="focusform" class="focusform hidden">
+      <input id="symbols" placeholder="Tickers for the next round, e.g. NVDA, XOM (blank = whole watchlist)" autocomplete="off">
+      <button type="submit">Set</button>
+    </form>
   </section>
 
   <section class="panel chat-panel">
-    <h2>Desk Chat <span class="muted" id="chatCount"></span></h2>
+    <h2>Comms <span class="muted" id="chatCount"></span></h2>
     <div class="chat" id="chat"></div>
   </section>
 
-  <section class="panel lb-panel">
+  <section class="panel standings-panel">
+    <h2>Standings <span class="muted small">net = right calls minus wrong calls</span></h2>
+    <div id="standings" class="standings"></div>
+  </section>
+
+  <section class="panel units-panel">
     <h2>Who called it? <span class="muted small" id="lbNote"></span></h2>
+    <div class="subtabs" id="unitTabs"></div>
     <div id="leaderboard" class="lb"></div>
   </section>
 
@@ -67,14 +90,15 @@
     <div id="idea" class="idea"><div class="empty">Waiting for the first pitch…</div></div>
   </section>
 
-  <section class="panel equity-panel">
-    <h2>Equity vs S&amp;P 500 <span class="muted small" id="eqNote"></span></h2>
-    <svg id="equityChart" viewBox="0 0 600 200"></svg>
-    <div class="legend"><span class="sw us"></span>Prop Desk <span class="sw spy"></span>SPY</div>
+  <section class="panel race-panel">
+    <h2>The race · equity vs S&amp;P 500</h2>
+    <svg id="race" viewBox="0 0 600 210"></svg>
+    <div class="legend" id="raceLegend"></div>
   </section>
 
   <section class="panel book-panel">
-    <h2>Book</h2>
+    <h2>Books</h2>
+    <div class="subtabs" id="bookTabs"></div>
     <div class="scroll-x">
       <table class="book" id="positions">
         <thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th><th>Last</th><th>Stop</th><th>Target</th><th>P&amp;L</th></tr></thead>

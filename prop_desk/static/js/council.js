@@ -21,8 +21,9 @@ const SEATS = {
 export const VOTERS = ["fundamental", "momentum", "cloud", "flow", "news"];
 
 export class Council {
-  constructor(svg, agents) {
+  constructor(svg, agents, opts = {}) {
     this.svg = svg;
+    this.opts = opts;
     this.agents = Object.fromEntries(agents.map((a) => [a.id, a]));
     this.chars = {};
     this.paddles = {};
@@ -48,7 +49,7 @@ export class Council {
     // Neon sign
     const sign = el("g", { transform: "translate(70,28)" }, s);
     el("rect", { width: 210, height: 44, rx: 6, fill: "#1a0c05", stroke: "#f97316", "stroke-width": 2, filter: "url(#cglow)" }, sign);
-    const st = el("text", { x: 105, y: 30, "text-anchor": "middle", class: "neon-sign" }, sign); st.textContent = "THE COUNCIL";
+    const st = el("text", { x: 105, y: 30, "text-anchor": "middle", class: "neon-sign" }, sign); st.textContent = this.opts.sign || "THE COUNCIL";
 
     // Monitor wall
     this.monitors = [];

@@ -28,8 +28,11 @@ class Settings:
     # --- Execution ---
     # Orders go to an internal paper ledger. There is intentionally no live
     # brokerage connection yet - see README "Going live".
-    starting_cash: float = float(os.getenv("PROP_DESK_CASH", "100000"))
-    ledger_path: str = os.getenv("PROP_DESK_LEDGER", os.path.join(os.path.dirname(__file__), "data", "ledger.json"))
+    starting_cash: float = float(os.getenv("PROP_DESK_CASH", "100000"))  # per faction
+    # Each faction keeps its own ledger and scorecard under data_dir/<faction>/.
+    data_dir: str = os.getenv("PROP_DESK_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
+    factions: list[str] = field(default_factory=lambda: [
+        f.strip().lower() for f in os.getenv("PROP_DESK_FACTIONS", "legion,ascendant,brood").split(",") if f.strip()])
     # Seconds between messages in rules mode so humans can follow the floor.
     pace: float = float(os.getenv("PROP_DESK_PACE", "0.6"))
 
@@ -61,13 +64,16 @@ class Settings:
 
     # --- Track record ---
     call_horizon_days: int = int(os.getenv("PROP_DESK_CALL_HORIZON_DAYS", "5"))
-    scorecard_path: str = os.getenv("PROP_DESK_SCORECARD", os.path.join(os.path.dirname(__file__), "data", "scorecard.json"))
-    sessions_dir: str = os.getenv("PROP_DESK_SESSIONS", os.path.join(os.path.dirname(__file__), "data", "sessions"))
 
     # --- Automation ---
     autorun_minutes: int = int(os.getenv("PROP_DESK_AUTORUN_MINUTES", "0"))  # 0 = off
     market_hours_only: bool = os.getenv("PROP_DESK_MARKET_HOURS_ONLY", "true").lower() == "true"
     alert_webhook: str = os.getenv("PROP_DESK_ALERT_WEBHOOK", "")  # Slack-compatible incoming webhook
+
+
+    @property
+    def sessions_dir(self) -> str:
+        return os.path.join(self.data_dir, "sessions")
 
 
 settings = Settings()

@@ -34,9 +34,11 @@ class Persona:
     # two different families, so three price-chart traders can't approve it alone.
     family: str = ""
     look: str = ""  # character accessory drawn in the GUI
+    faction: str = "legion"  # legion | ascendant | brood | neutral
+    style: str = "human"  # how the GUI draws them: human | seer | drone | queen
 
     def public(self) -> dict:
-        keys = ("id", "name", "role", "kind", "color", "initials", "bio", "weight", "family", "look")
+        keys = ("id", "name", "role", "kind", "color", "initials", "bio", "weight", "family", "look", "faction", "style")
         return {k: getattr(self, k) for k in keys}
 
 
@@ -242,14 +244,62 @@ TRADERS = [
             sees=["news"], heuristic=news_view, weight=0.8, family="news", look="headset"),
 ]
 
-RISK = Persona("risk", "Ingrid Hale", "Risk Manager", "risk", "#facc15", "IH",
-               "Sizes every trade and has a hard veto. Her limits are enforced in code.",
-               sees=["volatility"], look="helmet")
+RISK = Persona("risk", "Ingrid Hale", "Quartermaster (Risk)", "risk", "#facc15", "IH",
+               "Neutral referee. Sizes every faction's trades with the same hard limits, enforced in code.",
+               sees=["volatility"], look="helmet", faction="neutral")
 
-CHAIR = Persona("chair", "Sam Whitford", "Head of Desk", "chair", "#e5e7eb", "SW",
+CHAIR = Persona("chair", "Sam Whitford", "Commander, Iron Legion", "chair", "#e5e7eb", "SW",
                 "Chairs the Council, calls the vote, and writes the desk memo.", look="crown")
 
-ALL = RESEARCHERS + TRADERS + [RISK, CHAIR]
+LEGION = RESEARCHERS + TRADERS + [CHAIR]
+
+# ---------------------------------------------------------------- The Ascendant
+# Hyper-advanced: every seer is a quantitative model computed in code; the Exarch
+# pools their probabilities. (Models live in factions/ascendant.py.)
+ASCENDANT = [
+    Persona("vael", "Seer Vael", "Analog Forecaster", "trader", "#fde047", "VA",
+            "Finds the past moments that looked most like today and asks what happened next.",
+            faction="ascendant", style="seer", look="halo"),
+    Persona("kyth", "Augur Kyth", "Regime Augur", "trader", "#67e8f9", "KY",
+            "Reads the whole market's tide - trend and breadth - and how strongly this stock rides it.",
+            faction="ascendant", style="seer", look="halo"),
+    Persona("oriel", "Prism Oriel", "Volatility Prism", "trader", "#c4b5fd", "OR",
+            "Only respects returns that are large relative to their noise.",
+            faction="ascendant", style="seer", look="halo"),
+    Persona("lumen", "Lumen Sar", "Cross-Sectional Ranker", "trader", "#fdba74", "LS",
+            "Ranks every stock against every other on momentum, value and quality.",
+            faction="ascendant", style="seer", look="halo"),
+    Persona("thalor", "Exarch Thalor", "Exarch of the Convergence", "chair", "#fbbf24", "ET",
+            "Pools the seers' probabilities into one. Acts only when the Convergence is clear.",
+            faction="ascendant", style="seer", look="crown"),
+]
+
+# ---------------------------------------------------------------- The Brood
+# Hive mind: two dozen single-signal drones vote independently; the Queen merges them.
+# Drones that are wrong more often lose influence - the swarm evolves.
+DRONES = [
+    ("d_rsi_bounce", "Bounce Drone", "buys oversold RSI"), ("d_rsi_trend", "Pulse Drone", "RSI in the bull zone"),
+    ("d_macd", "Cross Drone", "MACD above signal"), ("d_sma20", "Skitter Drone", "above 20-day average"),
+    ("d_sma50", "Crawler Drone", "above 50-day average"), ("d_golden", "Gilded Drone", "50-day above 200-day"),
+    ("d_breakout", "Breach Drone", "new 20-day high"), ("d_breakdown", "Sink Drone", "new 20-day low"),
+    ("d_52w", "Apex Drone", "near 52-week high"), ("d_gap", "Leap Drone", "gapped up today"),
+    ("d_volume", "Swell Drone", "volume surge on an up day"), ("d_obv", "Burrow Drone", "OBV accumulating"),
+    ("d_cmf", "Siphon Drone", "Chaikin money flow positive"), ("d_mfi", "Gorge Drone", "MFI money inflow"),
+    ("d_cloud", "Mist Drone", "above the Ichimoku cloud"), ("d_tk", "Fang Drone", "Tenkan above Kijun"),
+    ("d_rs", "Stalker Drone", "beating SPY"), ("d_reversal", "Snap Drone", "fades sharp 5-day drops"),
+    ("d_higher_lows", "Climber Drone", "higher lows"), ("d_squeeze", "Coil Drone", "volatility squeeze"),
+    ("d_value", "Grazer Drone", "cheap on PEG"), ("d_growth", "Brood-Feeder Drone", "earnings growing"),
+    ("d_news", "Whisper Drone", "headline sentiment"), ("d_trend3m", "Tide Drone", "3-month uptrend"),
+]
+_DRONE_COLORS = ["#d946ef", "#a855f7", "#c026d3", "#e879f9", "#9333ea", "#f0abfc"]
+BROOD = [Persona(i, n, "Drone · " + d, "trader", _DRONE_COLORS[k % 6], n[:2].upper(),
+                 f"A single-minded drone: it only knows '{d}'.", faction="brood", style="drone")
+         for k, (i, n, d) in enumerate(DRONES)] + [
+    Persona("vexa", "Hive Queen Vexa", "Queen of the Brood", "chair", "#f472b6", "HQ",
+            "Feels every drone at once. Many small signals, one will.", faction="brood", style="queen"),
+]
+
+ALL = LEGION + ASCENDANT + BROOD + [RISK]
 BY_ID = {p.id: p for p in ALL}
 
 DISCIPLINE_PROMPTS = {

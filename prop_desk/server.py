@@ -10,6 +10,7 @@ import json
 import logging
 import os
 from collections import deque
+from contextlib import asynccontextmanager
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -20,12 +21,19 @@ from pydantic import BaseModel
 
 from .agents import personas as P
 from .config import settings
-from .desk import Desk
+from .desk import Arena
 
 logging.basicConfig(level=logging.INFO)
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
-app = FastAPI(title="Prop Desk")
+@asynccontextmanager
+async def lifespan(app):
+    if settings.autorun_minutes > 0:
+        asyncio.create_task(_autorun())
+    yield
+
+
+app = FastAPI(title="Prop Desk Arena", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 clients: set[WebSocket] = set()
@@ -41,7 +49,7 @@ async def broadcast(event: dict) -> None:
             clients.discard(ws)
 
 
-desk = Desk(settings, broadcast)
+arena = Arena(settings, broadcast)
 
 
 class RunRequest(BaseModel):
@@ -53,21 +61,16 @@ async def index():
     return FileResponse(os.path.join(STATIC, "index.html"))
 
 
-def _board():
-    stats = desk.scorecard.stats()
-    return [{"agent": t.id, **stats.get(t.id, {"calls": 0, "hits": 0, "accuracy": None, "edge": 0, "streak": 0,
-                                                "recent": [], "passes": 0}),
-             "weight": desk.scorecard.weight(t.id, t.weight)} for t in P.TRADERS]
-
-
 @app.get("/api/state")
 async def state():
     return {
-        "mode": desk.mode,
-        "running": desk.running,
+        "mode": arena.mode,
+        "running": arena.running,
         "agents": [p.public() for p in P.ALL],
-        "portfolio": desk.broker.summary(),
-        "scorecard": _board(),
+        "factions": [f.public() for f in arena.factions],
+        "standings": arena.standings(),
+        "portfolios": {f.id: f.broker.summary() for f in arena.factions},
+        "cost_usd": arena.cost_usd,
         "autorun_minutes": settings.autorun_minutes,
         "settings": {
             "watchlist": settings.watchlist,
@@ -81,6 +84,7 @@ async def state():
             "min_families": settings.min_families,
             "kalshi": settings.kalshi_enabled,
             "kalshi_min_edge": settings.kalshi_min_edge_cents,
+            "starting_cash": settings.starting_cash,
         },
     }
 
@@ -103,19 +107,21 @@ async def session_transcript(name: str):
 
 @app.post("/api/session")
 async def run_session(req: RunRequest):
-    if desk.running:
+    if arena.running:
         return {"started": False, "reason": "A session is already running"}
     history.clear()
-    asyncio.create_task(desk.run_session(req.symbols))
+    asyncio.create_task(arena.run_session(req.symbols))
     return {"started": True}
 
 
 @app.post("/api/reset")
 async def reset():
-    if desk.running:
+    if arena.running:
         return {"ok": False, "reason": "Wait for the session to finish"}
-    desk.broker.reset()
-    await broadcast({"type": "portfolio", **desk.broker.summary()})
+    for f in arena.factions:  # a fresh season: money and track records
+        f.broker.reset()
+        f.scorecard.reset()
+    await arena.publish()
     return {"ok": True}
 
 
@@ -141,16 +147,10 @@ async def _autorun():
     """Run a session every N minutes (during US market hours unless configured otherwise)."""
     while True:
         await asyncio.sleep(settings.autorun_minutes * 60)
-        if desk.running or (settings.market_hours_only and not _market_open()):
+        if arena.running or (settings.market_hours_only and not _market_open()):
             continue
         history.clear()
-        await desk.run_session()
-
-
-@app.on_event("startup")
-async def _startup():
-    if settings.autorun_minutes > 0:
-        asyncio.create_task(_autorun())
+        await arena.run_session()
 
 
 def main():

@@ -61,3 +61,73 @@ export function sprite(agent, scale = 1) {
 }
 
 export { shade };
+
+const thinkDots = (c, y) => `<g class="think"><rect x="-12" y="${y}" width="24" height="12" rx="6" fill="#0b1220" stroke="${c}"/>
+  <circle cx="-5" cy="${y + 6}" r="1.8" fill="${c}"/><circle cx="0" cy="${y + 6}" r="1.8" fill="${c}"/><circle cx="5" cy="${y + 6}" r="1.8" fill="${c}"/></g>`;
+
+// The Ascendant: floating robed seers with a glowing head and a halo.
+export function seer(agent, scale = 1) {
+  const c = agent.color, id = "sg" + agent.id;
+  const crown = agent.look === "crown"
+    ? `<path d="M-9 -60 l3 -9 l3 6 l3 -9 l3 9 l3 -6 l3 9 z" fill="#fbbf24" stroke="#92400e" stroke-width=".8"/>` : "";
+  return `<g class="sprite" transform="scale(${scale})"><defs>
+      <linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${shade(c, -0.45)}"/></linearGradient>
+      <radialGradient id="${id}o"><stop offset="0" stop-color="#fff"/><stop offset=".5" stop-color="${c}"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient></defs>
+    <ellipse class="shadow" cx="0" cy="0" rx="11" ry="3.5" fill="#000" opacity=".25"/>
+    <g class="hover">
+      <path d="M0 -40 C 9 -36 12 -20 15 -6 L 0 -10 L -15 -6 C -12 -20 -9 -36 0 -40 Z" fill="url(#${id})" stroke="${shade(c, 0.3)}" stroke-width=".8"/>
+      <path d="M-11 -32 q11 -6 22 0 l-3 4 q-8 -4 -16 0 z" fill="${shade(c, 0.25)}"/>
+      <circle cx="0" cy="-45" r="13" fill="url(#${id}o)" opacity=".7"/>
+      <circle cx="0" cy="-45" r="7.5" fill="#0b0820" stroke="${c}" stroke-width="1.5"/>
+      <rect x="-4.5" y="-46.5" width="3" height="1.6" rx=".8" fill="#67e8f9"/><rect x="1.5" y="-46.5" width="3" height="1.6" rx=".8" fill="#67e8f9"/>
+      <ellipse cx="0" cy="-57" rx="9" ry="2.6" fill="none" stroke="${c}" stroke-width="1.6" opacity=".9"/>
+      ${crown}
+      <path d="M-17 -18 l-3 -5 l3 -5 l3 5 z" fill="#a5f3fc" opacity=".85"/><path d="M17 -18 l-3 -5 l3 -5 l3 5 z" fill="#a5f3fc" opacity=".85"/>
+    </g>
+    ${thinkDots(c, -82)}
+  </g>`;
+}
+
+// The Brood: small skittering drones.
+export function drone(agent, scale = 1) {
+  const c = agent.color;
+  const legs = [-6, 0, 6].map((x) => `<line x1="${x}" y1="-6" x2="${x * 1.6 - 5}" y2="0" /><line x1="${x}" y1="-6" x2="${x * 1.6 + 5}" y2="0" />`).join("");
+  return `<g class="sprite" transform="scale(${scale})">
+    <ellipse class="shadow" cx="0" cy="0" rx="12" ry="3.5" fill="#000" opacity=".3"/>
+    <g class="legs" stroke="${shade(c, -0.4)}" stroke-width="1.6" stroke-linecap="round">${legs}</g>
+    <ellipse cx="0" cy="-9" rx="11" ry="7" fill="${shade(c, -0.25)}"/>
+    <ellipse cx="0" cy="-10" rx="9" ry="5.5" fill="${c}"/>
+    <path d="M-6 -13 q6 -3 12 0" fill="none" stroke="${shade(c, 0.35)}" stroke-width="1.2"/>
+    <ellipse cx="8" cy="-12" rx="5" ry="4.2" fill="${shade(c, -0.15)}"/>
+    <circle cx="9.5" cy="-13" r="1.4" fill="#bef264"/><circle cx="6.5" cy="-13.4" r="1.2" fill="#bef264"/>
+    <path d="M12 -10 l4 1 M12 -12 l4 -1" stroke="${shade(c, -0.4)}" stroke-width="1.2"/>
+    <circle class="vote-glow" cx="0" cy="-10" r="12" fill="none" stroke-width="2.5" opacity="0"/>
+    ${thinkDots(c, -36)}
+  </g>`;
+}
+
+// The Hive Queen.
+export function queen(agent, scale = 1) {
+  const c = agent.color;
+  const legs = [-10, -2, 6].map((x) => `<path d="M${x} -14 q-6 6 -12 14" /><path d="M${x} -14 q8 6 14 14" />`).join("");
+  return `<g class="sprite" transform="scale(${scale})">
+    <ellipse class="shadow" cx="0" cy="0" rx="26" ry="6" fill="#000" opacity=".35"/>
+    <g fill="none" stroke="${shade(c, -0.45)}" stroke-width="2.4" stroke-linecap="round" class="legs">${legs}</g>
+    <ellipse cx="-12" cy="-18" rx="17" ry="12" fill="${shade(c, -0.3)}"/>
+    <ellipse cx="-12" cy="-19" rx="11" ry="7" fill="#f9a8d4" opacity=".55" class="belly"/>
+    <ellipse cx="6" cy="-26" rx="10" ry="12" fill="${c}"/>
+    <path d="M0 -36 l-4 -14 l7 9 l2 -16 l4 15 l6 -11 l-2 15 z" fill="${shade(c, -0.2)}"/>
+    <ellipse cx="14" cy="-34" rx="7" ry="6" fill="${shade(c, -0.1)}"/>
+    <circle cx="16" cy="-35" r="1.8" fill="#bef264"/><circle cx="12" cy="-36" r="1.6" fill="#bef264"/>
+    <path d="M19 -31 l6 2 M19 -33 l6 -2" stroke="${shade(c, -0.4)}" stroke-width="1.6"/>
+    ${thinkDots(c, -70)}
+  </g>`;
+}
+
+// Picks the right body for any unit.
+export function unitSprite(agent, scale = 1) {
+  if (agent.style === "seer") return seer(agent, scale);
+  if (agent.style === "drone") return drone(agent, scale);
+  if (agent.style === "queen") return queen(agent, scale);
+  return sprite(agent, scale);
+}
