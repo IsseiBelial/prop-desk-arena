@@ -175,7 +175,7 @@ class Faction:
         rv = review_trade(self.broker, sym, direction, feats["price"], feats["volatility"]["atr14"], self.s,
                           sector=snap.fundamentals.get("sector") or "", risk_on=fld.risk_on, days_to_earnings=dte)
         verdict = (f"Signed off for {self.name}: {rv.qty} shares, stop {rv.stop}, target {rv.target}, "
-                   f"max loss ${rv.risk_dollars:,.0f}." if rv.approved else f"VETO for {self.name}.")
+                   f"max loss ${rv.risk_dollars:,.2f}." if rv.approved else f"VETO for {self.name}.")
         await self.say("risk", f"{verdict} {' '.join(rv.notes)}", "risk", sym, approved=rv.approved)
         if not rv.approved:
             return None

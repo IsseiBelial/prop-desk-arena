@@ -174,7 +174,7 @@ function onPhase(e) {
   const f = e.faction || S.turn, p = e.phase;
   if (p === "idle") {
     S.turn = null;
-    setBanner(null, `${seasonText()} · round complete. Press R for another.`);
+    setBanner(null, "Round complete. Press R for another.");
     if (!S.replaying) setTimeout(() => { Object.keys(S.agents).forEach((id) => battle.goHome(id)); battle.select(null); camera("map"); }, 2500);
     return;
   }

@@ -172,8 +172,20 @@ prop_desk/
 - **Not yet tested:**
   - Yahoo Finance and Kalshi's live API were unreachable from the build environment, so only simulated data
     has been run. The Kalshi client follows Kalshi's documented public market-data format.
-  - Live Claude was checked with single calls only: one Agent SDK research hunt, and Council votes through
-    the plan backend. A full Claude-mode round hasn't been run yet.
+  - **A full Claude round has been run** on a Claude plan with $100 accounts, using simulated market data.
+    It took 5.5 minutes, with no errors, and cost the equivalent of $2.22 at API prices:
+
+    | Faction | API-price equivalent |
+    |---|---|
+    | Iron Legion | $2.13 |
+    | Ascendant | $0.05 |
+    | Brood | $0.04 |
+
+    Lessons from that run:
+    - The agents noticed that the simulated fundamentals don't add up, and refused to size trades on them.
+      Iron Legion will only be judged fairly on real data.
+    - Nova's web research is real, so against simulated Kalshi prices it "finds" mispricings that don't
+      exist. Use real Kalshi data before trusting any prediction-market results.
 
 ## Going live (not built, on purpose)
 
