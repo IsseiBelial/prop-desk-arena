@@ -1,4 +1,5 @@
-// The battlefield: three bases, mineral fields (stocks), gas vents (prediction markets) and the units.
+// The battlefield: three bases, mineral fields (stocks, lively stocks, crypto, currencies),
+// gas vents (prediction markets) and the units.
 import { unitSprite, shade } from "./sprites.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -18,7 +19,7 @@ export const BASES = {
   neutral: { x: 600, y: 668, label: "QUARTERMASTER" },
 };
 const RING = { x: 600, y: 395, rx: 300, ry: 160 };
-const GAS_SPOTS = [[95, 300], [1105, 300], [330, 105], [870, 105], [355, 690], [845, 690]];
+const GAS_SPOTS = [[330, 105], [870, 105], [80, 92], [1120, 92], [350, 664], [850, 664]];
 
 export class BattleMap {
   constructor(svg, agents) {
@@ -57,6 +58,9 @@ export class BattleMap {
       <radialGradient id="creepFill"><stop offset="0" stop-color="#6b21a8"/><stop offset=".7" stop-color="#4a1167"/><stop offset="1" stop-color="#3b0d52" stop-opacity=".85"/></radialGradient>
       <radialGradient id="psi"><stop offset="0" stop-color="#fde68a" stop-opacity=".45"/><stop offset="1" stop-color="#fde68a" stop-opacity="0"/></radialGradient>
       <radialGradient id="vent"><stop offset="0" stop-color="#4ade80"/><stop offset=".5" stop-color="#166534"/><stop offset="1" stop-color="#052e16"/></radialGradient>
+      <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#fef9c3"/><stop offset=".45" stop-color="#facc15"/><stop offset="1" stop-color="#a16207"/></linearGradient>
+      <linearGradient id="void" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#f5d0fe"/><stop offset=".5" stop-color="#a855f7"/><stop offset="1" stop-color="#3b0764"/></linearGradient>
+      <linearGradient id="beacon" x1="0" x2="1"><stop offset="0" stop-color="#134e4a"/><stop offset=".5" stop-color="#5eead4"/><stop offset="1" stop-color="#134e4a"/></linearGradient>
       <linearGradient id="spire" x1="0" x2="1"><stop offset="0" stop-color="#fef3c7"/><stop offset=".5" stop-color="#fbbf24"/><stop offset="1" stop-color="#92400e"/></linearGradient>
       <linearGradient id="steel" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#94a3b8"/><stop offset="1" stop-color="#334155"/></linearGradient>
     </defs>`;
@@ -70,7 +74,7 @@ export class BattleMap {
     const r = rnd(11), rocks = el("g", {}, s);
     for (let i = 0; i < 46; i++) {
       const x = r() * W, y = r() * H, w = 6 + r() * 16;
-      if (Math.hypot(x - RING.x, (y - RING.y) * 1.6) < 360) continue;
+      if (Math.hypot(x - RING.x, (y - RING.y) * 1.6) < 360 || (y > 140 && y < 470 && (x < 250 || x > 950))) continue;
       el("ellipse", { cx: x, cy: y, rx: w, ry: w * .55, fill: "#2a2636", stroke: "#0d0b14", "stroke-width": 1.2 }, rocks);
     }
     this.drawLegion(); this.drawAscendant(); this.drawBrood(); this.drawQuartermaster();
@@ -144,27 +148,53 @@ export class BattleMap {
   }
 
   // ------------------------------------------------------------ resources
+  // Lanes: core stocks = blue minerals on the outer ring, lively stocks = gold "rich" minerals
+  // on the inner ring, crypto = violet void shards (west flank), forex = teal beacons (east flank).
   setMinerals(list) {
     this.resourceLayer.querySelectorAll(".mineral").forEach((n) => n.remove());
     this.minerals = {};
-    const n = list.length;
-    list.forEach((m, i) => {
-      const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
-      const x = RING.x + Math.cos(a) * RING.rx, y = RING.y + Math.sin(a) * RING.ry;
-      const g = el("g", { class: "mineral", transform: `translate(${x},${y})` }, this.resourceLayer);
-      el("ellipse", { cx: 0, cy: 4, rx: 34, ry: 11, fill: "#000", opacity: .35 }, g);
-      const ring = el("ellipse", { cx: 0, cy: 3, rx: 42, ry: 15, class: "sel-ring" }, g);
-      for (const [dx, h, w] of [[-18, 22, 9], [-6, 32, 10], [8, 26, 9], [19, 18, 8]]) {
-        el("path", { d: `M${dx} ${-h} l${w} ${h * .45} l-${w * .25} ${h * .55} h-${w * 1.5} l-${w * .25} -${h * .55} z`, fill: "url(#crystal)", stroke: "#e0f2fe", "stroke-width": .8, filter: "url(#glow)" }, g);
-      }
-      const chg = m.change_1w ?? 0;
-      const lab = el("g", { transform: "translate(0,26)" }, g);
-      el("rect", { x: -42, y: -10, width: 84, height: 20, rx: 6, fill: "#0b0a14", "fill-opacity": .85, stroke: "#1e3a8a" }, lab);
-      el("text", { x: -36, y: 4, class: "min-sym" }, lab).textContent = m.symbol;
-      el("text", { x: 36, y: 4, "text-anchor": "end", class: "min-chg " + (chg >= 0 ? "up" : "down") }, lab).textContent = (chg >= 0 ? "+" : "") + chg.toFixed(1) + "%";
-      this.minerals[m.symbol] = { x, y, g, ring };
+    const lanes = { stock: [], lively: [], crypto: [], forex: [] };
+    for (const m of list) (lanes[m.lane] || lanes.stock).push(m);
+    const ring = (arr, rx, ry, off) => arr.forEach((m, i) => {
+      const a = -Math.PI / 2 + off + (i / arr.length) * Math.PI * 2;
+      this.drawNode(m, RING.x + Math.cos(a) * rx, RING.y + Math.sin(a) * ry);
     });
+    ring(lanes.stock, RING.rx, RING.ry, 0);
+    ring(lanes.lively, 172, 84, Math.PI / Math.max(lanes.lively.length, 1));
+    lanes.crypto.forEach((m, i) => this.drawNode(m, i % 2 ? 196 : 92, 178 + i * 60));
+    lanes.forex.forEach((m, i) => this.drawNode(m, i % 2 ? 1004 : 1108, 196 + i * 66));
     this.drawClaims();
+  }
+
+  drawNode(m, x, y) {
+    const lane = m.lane || "stock";
+    const g = el("g", { class: `mineral lane-${lane}`, transform: `translate(${x},${y})` }, this.resourceLayer);
+    el("ellipse", { cx: 0, cy: 4, rx: 30, ry: 10, fill: "#000", opacity: .35 }, g);
+    const ring = el("ellipse", { cx: 0, cy: 3, rx: 40, ry: 15, class: "sel-ring" }, g);
+    if (lane === "forex") {  // a beacon: pillar with a pulsing light
+      el("path", { d: "M-9 2 L-5 -26 H5 L9 2 Z", fill: "url(#beacon)", stroke: "#99f6e4", "stroke-width": .8 }, g);
+      el("circle", { cx: 0, cy: -30, r: 6, fill: "#5eead4", filter: "url(#glow)", class: "blink" }, g);
+      el("ellipse", { cx: 0, cy: 2, rx: 16, ry: 5, fill: "none", stroke: "#2dd4bf", "stroke-opacity": .6 }, g);
+    } else {
+      const fill = { lively: "url(#gold)", crypto: "url(#void)" }[lane] || "url(#crystal)";
+      const edge = { lively: "#fef9c3", crypto: "#f5d0fe" }[lane] || "#e0f2fe";
+      const shards = lane === "crypto" ? [[-12, 26, 9], [2, 34, 11], [15, 22, 8]] : [[-18, 22, 9], [-6, 32, 10], [8, 26, 9], [19, 18, 8]];
+      const sc = lane === "stock" ? 1 : .85;
+      const cg = el("g", { transform: `scale(${sc})` }, g);
+      for (const [dx, h, w] of shards) {
+        el("path", { d: `M${dx} ${-h} l${w} ${h * .45} l-${w * .25} ${h * .55} h-${w * 1.5} l-${w * .25} -${h * .55} z`, fill, stroke: edge, "stroke-width": .8, filter: "url(#glow)" }, cg);
+      }
+    }
+    const chg = m.change_1w ?? 0;
+    const lab = el("g", { transform: "translate(0,24)" }, g);
+    const stroke = { lively: "#a16207", crypto: "#7e22ce", forex: "#0f766e" }[lane] || "#1e3a8a";
+    const name = (m.label || m.symbol).slice(0, 7), hw = name.length > 5 ? 50 : 42;  // EUR/USD needs a wider tag
+    el("rect", { x: -hw, y: -10, width: hw * 2, height: 20, rx: 6, fill: "#0b0a14", "fill-opacity": .85, stroke }, lab);
+    el("text", { x: 6 - hw, y: 4, class: "min-sym lane-" + lane }, lab).textContent = name;
+    el("text", { x: hw - 6, y: 4, "text-anchor": "end", class: "min-chg " + (chg >= 0 ? "up" : "down") }, lab).textContent = (chg >= 0 ? "+" : "") + chg.toFixed(1) + "%";
+    const t = el("title", {}, g);
+    t.textContent = `${m.symbol} · ${{ stock: "core stock", lively: "lively stock", crypto: "crypto", forex: "currency pair" }[lane]} · ${m.price}`;
+    this.minerals[m.symbol] = { x, y, g, ring, lane };
   }
 
   setGas(list) {
@@ -358,7 +388,8 @@ export class BattleMap {
 
 export function drawMinimap(svg, map) {
   const dots = map.snapshot().map((d) => `<circle cx="${d.x}" cy="${d.y}" r="${d.f === "brood" ? 9 : 13}" fill="${d.c}"/>`).join("");
-  const res = Object.values(map.minerals).map((m) => `<rect x="${m.x - 14}" y="${m.y - 10}" width="28" height="20" fill="#38bdf8"/>`).join("")
+  const lc = { stock: "#38bdf8", lively: "#facc15", crypto: "#a855f7", forex: "#2dd4bf" };
+  const res = Object.values(map.minerals).map((m) => `<rect x="${m.x - 14}" y="${m.y - 10}" width="28" height="20" fill="${lc[m.lane] || lc.stock}"/>`).join("")
     + Object.values(map.gas).map((m) => `<circle cx="${m.x}" cy="${m.y}" r="14" fill="#22c55e"/>`).join("");
   const bases = Object.entries(BASES).map(([k, b]) => `<circle cx="${b.x}" cy="${b.y}" r="${k === "neutral" ? 22 : 60}" fill="none" stroke="${{ legion: "#60a5fa", ascendant: "#fbbf24", brood: "#d946ef", neutral: "#facc15" }[k]}" stroke-width="10"/>`).join("");
   svg.innerHTML = `<rect width="${W}" height="${H}" fill="#0b0a12"/>${bases}${res}${dots}`;

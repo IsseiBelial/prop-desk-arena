@@ -18,6 +18,28 @@ def line(status: str, what: str, fix: str = "") -> None:
     RESULTS.append(status)
 
 
+def extra_checks(settings) -> None:
+    """Lively-stock screener, crypto, currencies and option chains (all from Yahoo)."""
+    import yfinance as yf
+
+    from .market_data import YahooProvider
+    from .universe import screen_lively
+    assets = set(settings.assets)
+    if "lively" in assets:
+        found = screen_lively(settings.lively_count, settings.lively_min_price,
+                              settings.lively_min_dollar_volume, set(settings.watchlist))
+        line("OK" if found else "WARN", f"Lively-stock screener: {', '.join(found) or 'nothing found'}",
+             "" if found else "The Arena would use its built-in list of lively stocks instead")
+    for kind, syms in (("crypto", settings.crypto), ("forex", settings.forex)):
+        if kind in assets and syms:
+            px = YahooProvider().bars(syms[0], days=5)["close"].iloc[-1]
+            line("OK", f"Live {kind}: {syms[0]} {px:,.4f}")
+    if "options" in assets:
+        n = len(yf.Ticker(settings.watchlist[0]).options or [])
+        line("OK" if n else "WARN", f"Option chains: {n} expiry dates for {settings.watchlist[0]}",
+             "" if n else "Options would be priced with a model instead of live quotes")
+
+
 def main() -> int:
     import logging
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)  # its own retry chatter isn't useful here
@@ -88,9 +110,19 @@ def main() -> int:
         from .market_data import YahooProvider
         bars = YahooProvider().bars(settings.benchmark, days=5)
         line("OK", f"Live stock data: {settings.benchmark} last close ${bars['close'].iloc[-1]:,.2f}")
+        yahoo_ok = True
     except Exception as e:
+        yahoo_ok = False
         line("FAIL", f"Can't reach Yahoo Finance ({type(e).__name__})",
              "Check the internet connection, firewall or antivirus; the app would fall back to fake prices")
+
+    print(f"       trading: {', '.join(settings.assets)}")
+    if yahoo_ok:
+        try:
+            extra_checks(settings)
+        except Exception as e:
+            line("WARN", f"Couldn't check the extra instruments ({type(e).__name__})",
+                 "Crypto, currencies and options may fall back to simulated prices")
 
     if settings.kalshi_enabled:
         try:

@@ -136,6 +136,8 @@ class Brood(Faction):
         direction = "LONG" if net > 0 else "SHORT"
         ok = active >= 8 and agree >= 0.68 and (direction == "LONG" or self.s.allow_shorts)
         reason = (f"{agree:.0%} of {active} active drones push {direction}" if ok else
+                  f"{agree:.0%} of {active} drones push SHORT, but shorting is off"
+                  if active >= 8 and agree >= 0.68 else
                   f"the swarm is split - {agree:.0%} of {active} active drones agree" if active >= 8 else
                   f"only {active} drones stirred")
         memo = await self.ask(
@@ -149,14 +151,21 @@ class Brood(Faction):
                              what_would_change_our_mind="More drones waking on the same side."))
         await self.say("vexa", ("APPROVED - " if ok else "REJECTED - ") + f"{reason}. {memo.summary}", "decision", sym,
                        approved=ok)
-        order = await self.execute_stock(sym, direction, fld, {d: {"stance": v} for d, v in votes.items()}) if ok else None
-        await self.emit({"type": "verdict", "symbol": sym, "approved": order is not None,
-                         "label": "APPROVED" if order else ("VETOED" if ok else "REJECTED")})
+        detail = {d: {"stance": v} for d, v in votes.items()}
+        order = await self.execute_stock(sym, direction, fld, detail) if ok else None
+        # A frenzy (80%+ of 10+ active drones) also buys an option on the same side.
+        option = None
+        if active >= 10 and agree >= 0.8:
+            option = await self.option_play(sym, "call" if net > 0 else "put", fld, detail,
+                                            f"frenzy: {agree:.0%} of {active} drones")
+        acted = order is not None or option is not None
+        await self.emit({"type": "verdict", "symbol": sym, "approved": acted,
+                         "label": "APPROVED" if acted else ("VETOED" if ok else "REJECTED")})
         stances = {d: "LONG" if v > 0 else "SHORT" if v < 0 else "PASS" for d, v in votes.items()}
-        self.record("stock", sym, sym, feats["price"], stances, direction if ok else "PASS", order is not None)
-        if order:
+        self.record("stock", sym, sym, feats["price"], stances, direction if (ok or option) else "PASS", acted)
+        if acted:
             await self.arena.publish()
-        return order is not None
+        return acted
 
     async def gas_turn(self, fld: Field) -> bool:
         await self.phase("markets")

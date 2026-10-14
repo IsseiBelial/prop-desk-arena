@@ -62,7 +62,8 @@ class IronLegion(Faction):
         return traded
 
     def _view(self, persona: P.Persona, snap: Snapshot, feats: dict) -> dict:
-        view = {"symbol": snap.symbol, "price": feats["price"], "volatility": feats["volatility"]}
+        view = {"symbol": snap.symbol, "asset_class": snap.asset, "price": feats["price"],
+                "volatility": feats["volatility"]}
         for group in persona.sees:
             if group == "fundamentals":
                 view["fundamentals"] = snap.fundamentals
@@ -90,7 +91,7 @@ class IronLegion(Faction):
         await self.phase("research")
         scout = P.BY_ID["scout"]
         scores = {s: round(self._screen_score(feats[s], snaps[s]), 3) for s in snaps
-                  if s in (symbols or self.s.watchlist)}
+                  if s in (symbols or self.fld.watchlist)}
         pool = [s for s in scores if s not in self.broker.positions]
 
         if self.brain and not symbols:
@@ -102,7 +103,8 @@ class IronLegion(Faction):
             await self.emit({"type": "status", "agent": "scout", "status": "thinking"})
             try:
                 slate = await agent.hunt(
-                    f"Find up to {self.s.candidates_per_session} stock trades from our watchlist worth bringing to "
+                    f"Find up to {self.s.candidates_per_session} trades from our watchlist (stocks, crypto or currency "
+                    f"pairs) worth bringing to "
                     f"the Council today. The desk is {'long/short' if self.s.allow_shorts else 'long-only'}. "
                     f"Skip names we already hold: {', '.join(self.broker.positions) or 'none'}.",
                     ctx, StockSlate)
@@ -298,17 +300,24 @@ class IronLegion(Faction):
                         approved=d.approved)
 
         order, notes = None, []
+        vote_detail = {a: {"stance": o.stance, "conviction": o.conviction} for a, o in votes.items()}
         if d.approved:
-            order = await self.execute_stock(
-                sym, d.direction, self.fld, {a: {"stance": o.stance, "conviction": o.conviction} for a, o in votes.items()})
-            if order:
-                await self.arena.publish()
-        await self.emit({"type": "verdict", "symbol": sym, "approved": order is not None,
-                         "label": "APPROVED" if order else ("VETOED" if d.approved else "REJECTED")})
+            order = await self.execute_stock(sym, d.direction, self.fld, vote_detail)
+        # A strong council (|score| >= 0.5) may add an option: a call when bullish, or a put
+        # when it wanted to short but shorting is off (a put is a short with a fixed max loss).
+        option = None
+        if abs(d.score) >= 0.5 and (d.approved or d.blocked_short):
+            option = await self.option_play(sym, "call" if d.direction == "LONG" else "put", self.fld, vote_detail,
+                                            f"council score {d.score:+.2f}")
+        acted = order is not None or option is not None
+        if acted:
+            await self.arena.publish()
+        await self.emit({"type": "verdict", "symbol": sym, "approved": acted,
+                         "label": "APPROVED" if acted else ("VETOED" if d.approved else "REJECTED")})
         self.record("stock", sym, sym, feats["price"], {a: o.stance for a, o in votes.items()},
-                    d.direction if d.approved else "PASS", order is not None)
-        await self._memo(sym, d, votes, order, notes)
-        return order is not None
+                    d.direction if (d.approved or option) else "PASS", acted)
+        await self._memo(sym, d, votes, order or option, notes)
+        return acted
 
     # ------------------------------------------------------------ prediction markets
     def _rules_contract_view(self, t, c: Contract) -> ContractOpinion:

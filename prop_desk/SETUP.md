@@ -79,6 +79,8 @@ Things you might change:
 | `PROP_DESK_MODEL=claude-sonnet-5-5` | Uses about half the plan usage of Opus. Good if you hit limits. |
 | `PROP_DESK_SCHEDULE_ET=09:45,12:30,15:30` | Three rounds a day instead of two. Uses more plan usage. |
 | `PROP_DESK_RISK_PCT` / `PROP_DESK_MAX_POS_PCT` | How aggressive every faction may be. The defaults are 1% risk per trade and 10% max per stock. |
+| `PROP_DESK_ASSETS` | What they may trade. The default is everything: stocks, lively stocks, crypto, currencies and options. Remove any you don't want. |
+| `PROP_DESK_OPTIONS_TRADE_PCT` | At $100 most options are vetoed as too expensive, because one contract covers 100 shares. Raising this lets them in sooner, at more risk. |
 
 Save the file and close Notepad.
 
@@ -94,6 +96,8 @@ over about 22 trading days comes to about $95 a month of usage on your plan.
 Every line should say `[ OK ]`, and it should end with **Ready**. In particular:
 - **Claude: using your Claude plan login** → step 2 worked.
 - **Live stock data: SPY last close $…** → Yahoo Finance is reachable.
+- **Lively-stock screener**, **Live crypto**, **Live forex** and **Option chains** → the extra instruments
+  are reachable. A `[WARN]` here just means that instrument falls back to a built-in list or a model price.
 - **Live Kalshi data** → prediction markets are reachable.
 
 If anything says `[FAIL]`, the line under it tells you what to do. Also see [Troubleshooting](#troubleshooting).

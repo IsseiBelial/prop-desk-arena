@@ -46,6 +46,11 @@ SHARED_RULES = """You sit on the trading floor of a small proprietary trading fi
 pitch trade ideas; five specialist traders vote; a risk manager sizes the trade;
 the trade is only placed if the floor reaches consensus.
 
+The desk trades stocks (including fast-moving smaller names), crypto (symbols like BTC-USD,
+in US dollars) and currency pairs (symbols like EURUSD=X: the price of one euro in dollars).
+Every view you get says which asset class it is. If your discipline doesn't apply to the asset -
+company fundamentals for a coin or a currency, for example - PASS and say so.
+
 How you work:
 - Judge the pitch ONLY through your own discipline. Other traders cover the other angles;
   the firm wants independent views, not five copies of the same opinion.
@@ -188,8 +193,10 @@ def money_flow_view(f: dict, s: Snapshot):
     return _clip(score), sig, con
 
 
-_POS = ("beat", "beats", "raise", "raises", "upgrade", "buyback", "wins", "record", "surge", "approval", "strong")
-_NEG = ("miss", "misses", "cut", "cuts", "downgrade", "probe", "lawsuit", "short seller", "recall", "weak", "plunge", "investigation")
+_POS = ("beat", "beats", "raise", "raises", "upgrade", "buyback", "wins", "record", "surge", "approval", "strong",
+        "rallies", "lifts", "inflows", "adds")
+_NEG = ("miss", "misses", "cut", "cuts", "downgrade", "probe", "lawsuit", "short seller", "recall", "weak", "plunge", "investigation",
+        "hack", "slides", "falls", "sell-off")
 
 
 def news_view(f: dict, s: Snapshot):

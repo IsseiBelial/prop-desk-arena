@@ -39,13 +39,13 @@ def _text(obj) -> dict:
 def build_tools(ctx: DeskContext):
     from claude_agent_sdk import create_sdk_mcp_server, tool
 
-    @tool("screen_watchlist", "Technical setup score (-1 bearish .. +1 bullish) for every stock on the "
-          "watchlist, plus which ones the desk already holds.", {})
+    @tool("screen_watchlist", "Technical setup score (-1 bearish .. +1 bullish) for everything on the "
+          "watchlist (stocks, crypto like BTC-USD, currency pairs like EURUSD=X), plus what the desk already holds.", {})
     async def screen_watchlist(args):
         board = sorted(ctx.screen.items(), key=lambda kv: kv[1], reverse=True)
         return _text({"scores": dict(board), "already_held": ctx.holdings})
 
-    @tool("symbol_report", "Full research report for one stock: price, momentum, Ichimoku cloud, money flow, "
+    @tool("symbol_report", "Full research report for one symbol (stock, coin or currency pair): price, momentum, Ichimoku cloud, money flow, "
           "volatility, fundamentals and recent headlines.", {"symbol": str})
     async def symbol_report(args):
         r = ctx.reports.get(str(args.get("symbol", "")).upper())

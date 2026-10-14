@@ -184,13 +184,20 @@ class Ascendant(Faction):
                              what_would_change_our_mind="A shift in the pooled probability past 55%."))
         await self.say("thalor", ("APPROVED - " if ok else "REJECTED - ") + f"{reason}. {memo.summary}", "decision", sym,
                        approved=ok)
-        order = await self.execute_stock(sym, direction, fld, {u: {"stance": v} for u, v in votes.items()}) if ok else None
-        await self.emit({"type": "verdict", "symbol": sym, "approved": order is not None,
-                         "label": "APPROVED" if order else ("VETOED" if ok else "REJECTED")})
-        self.record("stock", sym, sym, feats["price"], votes, direction if ok else "PASS", order is not None)
-        if order:
+        detail = {u: {"stance": v} for u, v in votes.items()}
+        order = await self.execute_stock(sym, direction, fld, detail) if ok else None
+        # Very high conviction (65%+ either way, 3+ seers aligned) also buys an option.
+        # Below 35% that's a put: the Ascendant's way to bet on a fall without shorting.
+        option = None
+        if aligned >= 3 and (p >= 0.65 or p <= 0.35):
+            option = await self.option_play(sym, "call" if p >= 0.65 else "put", fld, detail, f"convergence {p:.0%}")
+        acted = order is not None or option is not None
+        await self.emit({"type": "verdict", "symbol": sym, "approved": acted,
+                         "label": "APPROVED" if acted else ("VETOED" if ok else "REJECTED")})
+        self.record("stock", sym, sym, feats["price"], votes, direction if (ok or option) else "PASS", acted)
+        if acted:
             await self.arena.publish()
-        return order is not None
+        return acted
 
     # ---------------------------------------------------------------- prediction markets
     def contract_readings(self, c: Contract) -> dict:

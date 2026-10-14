@@ -87,6 +87,11 @@ async def state():
             "kalshi": settings.kalshi_enabled,
             "kalshi_min_edge": settings.kalshi_min_edge_cents,
             "starting_cash": settings.starting_cash,
+            "assets": settings.assets,
+            "crypto": settings.crypto,
+            "forex": settings.forex,
+            "options_total_pct": settings.options_total_pct,
+            "options_trade_pct": settings.options_trade_pct,
         },
     }
 

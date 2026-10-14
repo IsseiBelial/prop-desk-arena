@@ -20,9 +20,36 @@ does it cost to run?**
 | **The Brood** | Hive mind | 24 single-signal drones (RSI bounce, 20-day breakout, money inflow, gap up…) vote independently, with no debate. The Hive Queen acts when at least 68% of at least 8 active drones agree, in the **Hive Mind**. Drones that keep being wrong lose weight: the swarm evolves. | Light: 1 Claude call per idea |
 
 **Neutral Quartermaster.** Ingrid sizes every faction's trades with the same rules, all enforced in code: 1%
-of equity at risk with a 2×ATR stop, a 10% cap per position, 8 positions max, at most 2 positions per sector,
-no trades within 3 days of earnings, half size when SPY is below its 200-day average, and a halt after a 3%
-daily loss.
+of equity at risk with a 2×ATR stop, a 10% cap per position (50% for currency pairs), 8 positions max, at most
+2 positions per sector (crypto and currencies each count as a sector), no trades within 3 days of earnings, half
+size when SPY is below its 200-day average, and a halt after a 3% daily loss.
+
+## What they trade
+
+Every round the factions scan one shared universe. On the map each kind of resource has its own look.
+
+| Lane | What | On the map |
+|---|---|---|
+| Core stocks | 12 large caps (`PROP_DESK_WATCHLIST`) | blue minerals, outer ring |
+| Lively stocks | Today's fast movers from Yahoo's screeners (most active, top gainers, small-cap gainers). Only names on a major exchange, at least $2 a share and $5M traded a day. No penny stocks, nothing over-the-counter. If the screener is unreachable, a built-in list (PLTR, SOFI, HOOD, RKLB…) is used. | gold minerals, inner ring |
+| Crypto | BTC, ETH, SOL, XRP, DOGE in US dollars, in fractions of a coin | violet shards, west flank |
+| Currencies | EUR/USD, GBP/USD, AUD/USD, NZD/USD. All quoted in dollars, so profit is in dollars. No leverage. | teal beacons, east flank |
+| Options | Bought calls and puts on the stocks. See below. | flag on the stock |
+| Prediction markets | Kalshi, when a faction made no other trade | green gas vents |
+
+**Options are buy-only**, so the most a faction can lose is what it paid.
+- **When.** Only on unusually strong signals: Iron Legion at a council score of ±0.50 or more, the Ascendant at
+  65%+ (or 35% and below, which buys a put), and the Brood in a frenzy (80% of 10+ active drones). A put is how a
+  faction bets on a fall without shorting.
+- **What gets bought.** The Quartermaster picks an option 14–45 days out, about 3% out of the money, with a tight
+  bid/ask spread. It never picks an expiry past the next earnings date. If one option is too expensive, it tries a
+  **debit spread**: buy that strike and sell the next one out. That is cheaper and still has a fixed maximum loss.
+- **Limits.** At most 10% of equity per option trade and 20% in options in total.
+- **Exits.** At +100%, at −50%, 3 days before expiry, or settled at expiry.
+- **Small accounts.** One contract covers 100 shares, so at $100 accounts almost every option is vetoed as too
+  expensive, with the price shown in Comms. Options switch on by themselves as an account grows. Raise
+  `PROP_DESK_OPTIONS_TRADE_PCT` if you want them sooner, at more risk.
+- **Pricing.** Live Yahoo option chains. If no live quote is available, a Black-Scholes model price is used.
 
 **Gas (prediction markets).** A faction that makes no stock trade in a round may go after Kalshi markets. Each
 faction estimates the probability its own way, needs at least 5¢ of edge after Kalshi's fees, and sizes at a
@@ -34,8 +61,13 @@ quarter of the Kelly bet, capped at 1% of equity per market and 5% in total.
   **fractional shares** (`PROP_DESK_FRACTIONAL`, minimum order $1), so a $100 account can hold anything on
   the watchlist.
 - **The goal.** Each faction tries to make as much money as possible over the season (`PROP_DESK_SEASON_DAYS`,
-  default 30). The standings rank by **return this season**.
-- **Reinvesting.** When a season ends, results are recorded with a 🏆 for the winner, and the next season
+  default 30), **without taking wild risks to get there**. The season is won on a **risk-adjusted score**: this
+  season's return divided by its worst drop from a high point (at least 2%). A loss counts in full.
+  - Example: a faction that makes +8% and never drops more than 2% scores 4.0. It beats one that makes +10% on a
+    ride that fell 15% along the way, which scores 0.67. Big swings that happen to pay off are mostly luck; the
+    score rewards skill.
+  - Each standings card shows the return, the worst drop and the score.
+- **Reinvesting.** When a season ends, results are recorded with a 🏆 for the winner (best score), and the next season
   starts from each faction's ending equity. Profits are reinvested, losses are carried, and position sizes
   grow or shrink with the account. Open positions carry over.
 - **Running all season.** Use a machine that stays on, such as a spare PC, a mini PC or a small cloud server,
@@ -51,8 +83,8 @@ Every idea a faction considers becomes a **call**, whether it traded or not. Eac
 graded too.
 - Stocks are graded after 5 days: up more than 1% = up, down more than 1% = down, otherwise flat.
 - Prediction markets are graded when they settle YES or NO.
-- **Net** = right calls minus wrong calls. Standings rank by net, then hit rate, then P&L. Each card also shows
-  the faction's AI spend.
+- **Net** = right calls minus wrong calls. Each card also shows the hit rate and the faction's AI spend. The
+  standings themselves rank by the risk-adjusted score above.
 - A unit's track record sets its vote weight inside its faction, between 0.5× and 1.5×. Good units earn a
   louder voice.
 
@@ -118,7 +150,13 @@ Every Claude call goes through one of two backends. The app picks one automatica
 |---|---|---|
 | `PROP_DESK_FACTIONS` | `legion,ascendant,brood` | which factions compete |
 | `PROP_DESK_MODEL` / `PROP_DESK_EFFORT` | `claude-opus-5-5` / `medium` | `claude-sonnet-5-5` is about half the cost |
-| `PROP_DESK_WATCHLIST` | 12 large caps | the mineral fields |
+| `PROP_DESK_WATCHLIST` | 12 large caps | the core stocks |
+| `PROP_DESK_ASSETS` | `stocks,lively,crypto,forex,options` | what the factions may trade |
+| `PROP_DESK_LIVELY_COUNT` / `_LIVELY_MIN_PRICE` / `_LIVELY_MIN_DOLLAR_VOLUME` | `8` / `2` / `5000000` | today's lively stocks and their filters |
+| `PROP_DESK_CRYPTO` / `PROP_DESK_FOREX` | 5 coins / 4 pairs | Yahoo symbols, e.g. `BTC-USD`, `EURUSD=X` |
+| `PROP_DESK_CRYPTO_MAX_POS_PCT` / `PROP_DESK_FOREX_MAX_POS_PCT` | `10` / `50` | position caps for coins and currencies |
+| `PROP_DESK_OPTIONS_TRADE_PCT` / `_OPTIONS_TOTAL_PCT` | `10` / `20` | option limits, % of equity |
+| `PROP_DESK_OPTIONS_MIN_DAYS` / `_MAX_DAYS` / `_TAKE_PROFIT_PCT` / `_STOP_PCT` | `14` / `45` / `100` / `50` | which options, and when to sell |
 | `PROP_DESK_CANDIDATES` | `3` | ideas each faction considers per round |
 | `PROP_DESK_CASH` | `100` | each faction's stake at the first season |
 | `PROP_DESK_SEASON_DAYS` | `30` | season length; ending equity rolls into the next season |
@@ -155,9 +193,12 @@ prop_desk/
   factions/brood.py    the Brood's 24 drones and the Queen
   agents/              personas, Claude wrapper, Agent SDK research agent, output schemas
   indicators.py        RSI, MACD, ATR, Ichimoku, MFI, CMF, OBV, relative strength
-  market_data.py       Yahoo Finance + simulated prices
+  universe.py          what's tradable today: core + lively stocks, crypto, currencies
+  market_data.py       Yahoo Finance + simulated prices (stocks, crypto, currencies)
+  options.py           option chains (Yahoo or Black-Scholes), choosing a contract
+  season.py            seasons, reinvesting, risk-adjusted score
   kalshi.py            Kalshi read-only market data + simulator, fees and edge
-  broker.py            paper ledger + the Quartermaster's rules
+  broker.py            paper ledger + the Quartermaster's rules (stocks, coins, currencies, options, Kalshi)
   scorecard.py         "Who called it?" grading and vote weights
   server.py            FastAPI + WebSocket; static/ is the game UI (plain JS + SVG, no build step)
   tests/               python -m pytest prop_desk/tests
@@ -168,13 +209,17 @@ prop_desk/
 
 ## What's tested, and what isn't
 
-- **Tested:** 30 automated tests cover indicators, consensus, every risk rule, Kalshi fees and settlement,
-  scoring and weights, all three factions end to end, Claude-mode paths using a stand-in model, and recovery
+- **Tested:** 38 automated tests cover indicators, consensus, every risk rule, Kalshi fees and settlement,
+  scoring and weights, crypto and currency sizing, option pricing, caps, spreads and settlement, risk-adjusted
+  season scoring, all three factions end to end, Claude-mode paths using a stand-in model, and recovery
   when Claude or the research agent fails. Full rounds were also run in a headless browser at desktop and
   phone widths.
 - **Not yet tested:**
   - Yahoo Finance and Kalshi's live API were unreachable from the build environment, so only simulated data
-    has been run. The Kalshi client follows Kalshi's documented public market-data format.
+    has been run. That includes the lively-stock screener, live crypto and currency prices, and live option
+    chains. The Kalshi client follows Kalshi's documented public market-data format. Run
+    `python -m prop_desk.check` on the spare PC to confirm all of them.
+  - The new instruments have only been run with the rule-based factions. Claude hasn't traded them live yet.
   - **A full Claude round has been run** on a Claude plan with $100 accounts, using simulated market data.
     It took 5.5 minutes, with no errors, and cost the equivalent of $2.22 at API prices:
 

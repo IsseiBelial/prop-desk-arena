@@ -29,6 +29,7 @@ class Decision:
     passing: list[str]
     approved: bool
     reason: str
+    blocked_short: bool = False  # the council wanted to short, but shorting is off
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -58,4 +59,5 @@ def tally(opinions: dict, weights: dict[str, float], threshold: float, quorum: i
         approved, reason = False, "Council wants to short, but shorting is disabled"
     else:
         approved, reason = True, f"{len(agreeing)} of {len(opinions)} traders back {direction} (score {score:+.2f})"
-    return Decision(score, direction, agreeing, dissenting, passing, approved, reason)
+    blocked = not approved and reason.startswith("Council wants to short")
+    return Decision(score, direction, agreeing, dissenting, passing, approved, reason, blocked)

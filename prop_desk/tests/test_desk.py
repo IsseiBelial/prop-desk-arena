@@ -397,10 +397,110 @@ def test_season_rollover_reinvests(tmp_path):
     assert Season(str(tmp_path / "season.json"), 30).history[0]["winner"] == "legion"  # persisted
 
 
-def test_arena_standings_rank_by_season_return(settings):
+def test_arena_standings_rank_by_risk_adjusted_score(settings):
     a = Arena(settings, None)
     run(a)
     rows = a.standings()
-    assert all("season_return_pct" in r for r in rows)
-    assert [r["season_return_pct"] for r in rows] == sorted((r["season_return_pct"] for r in rows), reverse=True)
+    assert all({"season_return_pct", "max_drawdown_pct", "score"} <= set(r) for r in rows)
+    assert [r["score"] for r in rows] == sorted((r["score"] for r in rows), reverse=True)
     assert a.season_info()["number"] == 1 and a.season_info()["day"] == 1
+
+
+# ------------------------------------------------------------- more instruments
+from datetime import date, timedelta  # noqa: E402
+
+from prop_desk import universe  # noqa: E402
+from prop_desk.broker import review_option  # noqa: E402
+from prop_desk.options import SyntheticOptions, bs_price, pick  # noqa: E402
+from prop_desk.season import Season, risk_adjusted  # noqa: E402
+
+
+def test_universe_lanes_and_names(settings):
+    assert universe.asset_class("BTC-USD") == "crypto" and universe.asset_class("EURUSD=X") == "forex"
+    assert universe.display("EURUSD=X") == "EUR/USD" and universe.display("BTC-USD") == "BTC"
+    lanes = universe.build(settings, "synthetic")  # offline: lively names come from the fallback list
+    assert {lanes[s] for s in lanes} == {"stock", "lively", "crypto", "forex"}
+    assert sum(v == "lively" for v in lanes.values()) == settings.lively_count
+    settings.assets = ["stocks", "crypto"]
+    assert set(universe.build(settings, "synthetic").values()) == {"stock", "crypto"}
+
+
+def test_crypto_and_forex_data_behave():
+    p = SyntheticProvider()
+    spy = p.bars("SPY")
+    fx, btc = p.snapshot("EURUSD=X"), p.snapshot("BTC-USD")
+    assert fx.asset == "forex" and 0.5 < fx.price < 2 and (fx.bars["volume"] == 0).all()
+    f = compute_features(fx.bars, spy)  # no volume: volume readings are None, nothing crashes
+    assert f["money_flow"]["obv_trend_20d"] is None and f["money_flow"]["volume_20d_vs_50d"] is None
+    assert f["volatility"]["atr_pct"] < 2  # currencies move far less than stocks
+    assert btc.asset == "crypto" and btc.price > 1000 and "pe" not in btc.fundamentals
+    assert not any("earnings" in h.title for h in btc.news)
+
+
+def test_sizing_for_coins_and_currencies(settings):
+    b = PaperBroker(os.path.join(settings.data_dir, "t", "ledger.json"), 100)
+    btc = review_trade(b, "BTC-USD", "LONG", 65000.0, 3900.0, settings, asset="crypto")
+    assert btc.approved and btc.qty < 0.001 and btc.qty * 65000 <= 10.0  # fractions of a coin
+    doge = review_trade(b, "DOGE-USD", "LONG", 0.1523, 0.009, settings, asset="crypto")
+    assert doge.approved and doge.stop == 0.1343  # not rounded to $0.13
+    eur = review_trade(b, "EURUSD=X", "LONG", 1.0794, 0.0087, settings, asset="forex")
+    assert eur.approved and eur.stop == 1.062 and round(eur.qty * 1.0794) == 50  # 50% cap for currencies
+
+
+def test_option_pricing_and_choice():
+    call, put = bs_price(100, 100, 0.25, 0.3, "call"), bs_price(100, 100, 0.25, 0.3, "put")
+    assert abs((call - put) - (100 - 100 * 2.718281828 ** (-0.04 * 0.25))) < 0.01  # put-call parity
+    today = date(2026, 10, 14)
+    quotes = SyntheticOptions().chain("XYZ", 50.0, 0.5, "call", today=today)
+    long_leg, short_leg = pick(quotes, 50.0, "call", budget=10_000, min_days=14, max_days=45, today=today)
+    assert long_leg and short_leg is None and 14 <= long_leg.days(today) <= 45 and long_leg.strike >= 50
+    long_leg, short_leg = pick(quotes, 50.0, "call", budget=20, min_days=14, max_days=45, today=today)
+    assert short_leg and short_leg.strike > long_leg.strike and short_leg.expiry == long_leg.expiry  # spread
+
+
+def test_options_are_capped_and_settle(settings):
+    today = date.today()
+    quotes = SyntheticOptions().chain("XYZ", 50.0, 0.5, "call")
+    q, _ = pick(quotes, 50.0, "call", 10_000, 14, 45)
+    small = PaperBroker(os.path.join(settings.data_dir, "s", "ledger.json"), 100)
+    veto = review_option(small, q, settings)
+    assert not veto.approved and "Too expensive" in veto.notes[-1]  # one contract = 100 shares
+    b = PaperBroker(os.path.join(settings.data_dir, "b", "ledger.json"), 5000)
+    rv = review_option(b, q, settings)
+    assert rv.approved and rv.risk_dollars <= 500  # 10% of equity per option trade
+    b.open_option(q, rv, {})
+    assert b.option_exposure == rv.risk_dollars and not review_option(b, q, settings).approved  # one per stock
+    exp = date.fromisoformat(q.expiry)
+    t = b.mark_option(q.contract, None, q.strike + 5, settings, today=exp)  # expires $5 in the money
+    assert t["reason"] == "expired" and t["price"] == 5.0 and not b.options
+    b.open_option(q, rv, {})
+    t = b.mark_option(q.contract, q.ask * 2.5, 60.0, settings, today=today)  # doubled -> take profit
+    assert t["reason"].startswith("took profit") and t["pnl"] > 0
+
+
+def test_risk_adjusted_scoring(tmp_path):
+    assert risk_adjusted(8, 2) > risk_adjusted(10, 15)  # steady beats lucky
+    assert risk_adjusted(1, 0.1) == 0.5  # drawdown floored at 2%
+    assert risk_adjusted(-3, 10) == -3 < risk_adjusted(0, 0) == 0
+    b = PaperBroker(str(tmp_path / "l.json"), 100)
+    for e in (100, 110, 88, 105):
+        b.history.append({"t": "2026-10-0%dT00:00:00+00:00" % (len(b.history) + 1), "equity": e})
+    assert b.drawdown() == 20.0  # 110 -> 88
+    s = Season(str(tmp_path / "season.json"), days=1)
+    from datetime import datetime, timezone
+    t0 = datetime(2026, 11, 2, tzinfo=timezone.utc)
+    s.tick({"steady": 100.0, "lucky": 100.0}, now=t0)
+    closed = s.tick({"steady": 108.0, "lucky": 110.0}, now=t0 + timedelta(days=1),
+                    drawdowns={"steady": 2.0, "lucky": 15.0})
+    assert closed["winner"] == "steady" and closed["results"][0]["score"] == 4.0
+
+
+def test_short_blocked_council_can_buy_puts():
+    d = tally({"a": op("SHORT", 80), "b": op("SHORT", 80), "c": op("SHORT", 70)}, {}, 0.3, 3)
+    assert not d.approved and d.blocked_short
+
+
+def test_map_shows_every_lane(settings):
+    ev = run(Arena(settings, None))
+    lanes = {m["lane"] for m in [e for e in ev if e["type"] == "map"][0]["minerals"]}
+    assert lanes == {"stock", "lively", "crypto", "forex"}

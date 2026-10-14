@@ -27,7 +27,9 @@ from .factions.base import Field
 from .indicators import compute_features
 from .kalshi import make_kalshi
 from .market_data import make_provider
-from .season import Season
+from .options import make_options
+from .season import Season, risk_adjusted
+from . import universe
 
 log = logging.getLogger(__name__)
 Emit = Callable[[dict], Awaitable[None]]
@@ -41,6 +43,7 @@ class Arena:
         self.use_claude = self.backend is not None
         self.provider = None
         self.kalshi = None
+        self.options = None
         self.bench_price: float | None = None
         self.factions = [FACTIONS[f](self) for f in settings.factions if f in FACTIONS]
         self.season = Season(os.path.join(settings.data_dir, "season.json"), settings.season_days)
@@ -90,17 +93,23 @@ class Arena:
     def equities(self) -> dict[str, float]:
         return {f.id: f.broker.equity for f in self.factions}
 
+    def drawdowns(self) -> dict[str, float]:
+        return {f.id: f.broker.drawdown(since=self.season.started) for f in self.factions}
+
     def standings(self) -> list[dict]:
-        """Ranked by this season's return (the goal: make the most money), then by net correct calls."""
+        """Ranked by this season's risk-adjusted return, then raw return, then net correct calls."""
         rets = self.season.returns(self.equities()) if self.season.started else {}
+        dds = self.drawdowns()
         rows = []
         for f in self.factions:
             r = f.standings()
             r["season_start"] = self.season.start_equity.get(f.id, f.broker.equity)
             r["season_return_pct"] = rets.get(f.id, 0.0)
+            r["max_drawdown_pct"] = dds[f.id]
+            r["score"] = risk_adjusted(r["season_return_pct"], dds[f.id])
             r["seasons_won"] = sum(1 for h in self.season.history if h["winner"] == f.id)
             rows.append(r)
-        rows.sort(key=lambda r: (r["season_return_pct"], r["net"], r["accuracy"] or 0), reverse=True)
+        rows.sort(key=lambda r: (r["score"], r["season_return_pct"], r["net"], r["accuracy"] or 0), reverse=True)
         return rows
 
     def season_info(self) -> dict:
@@ -119,18 +128,25 @@ class Arena:
             self.provider = await loop.run_in_executor(None, make_provider, self.s.data_source, self.s.benchmark)
         if self.kalshi is None and self.s.kalshi_enabled:
             self.kalshi = await loop.run_in_executor(None, make_kalshi, self.s.kalshi_data)
+        if self.options is None and "options" in self.s.assets:
+            self.options = make_options(self.provider.name)
+        if symbols:  # the user picked tickers
+            lanes = {s: universe.asset_class(s) for s in symbols}
+        else:  # today's universe: core stocks, today's lively movers, crypto, currencies
+            lanes = await loop.run_in_executor(None, universe.build, self.s, self.provider.name)
         await self.emit({"type": "session", "mode": self.mode, "data_source": self.provider.name,
                          "markets_source": self.kalshi.name if self.kalshi else "off"})
 
         bench = await loop.run_in_executor(None, self.provider.snapshot, self.s.benchmark)
         bf = compute_features(bench.bars)
         self.bench_price = bf["price"]
-        fld = Field(bench_bars=bench.bars, bench_price=bf["price"], watchlist=symbols or self.s.watchlist,
+        fld = Field(bench_bars=bench.bars, bench_price=bf["price"], watchlist=list(lanes), lanes=lanes,
                     risk_on=(bf["momentum"]["price_vs_sma200_pct"] or 0) > 0, focus=symbols)
         await self.emit({"type": "regime", "risk_on": fld.risk_on, "spy": bf["price"],
                          "spy_vs_200d": bf["momentum"]["price_vs_sma200_pct"]})
 
-        held = [s for f in self.factions for s in f.broker.positions]
+        held = [s for f in self.factions for s in f.broker.positions] + \
+            [o.underlying for f in self.factions for o in f.broker.options.values()]
         pending = [c["key"] for f in self.factions for c in f.scorecard.pending("stock")]
         for sym in dict.fromkeys(fld.watchlist + held + pending):
             try:
@@ -145,7 +161,8 @@ class Arena:
                 await self.emit({"type": "notice", "text": f"Couldn't load prediction markets: {e}"})
 
         await self.emit({"type": "map", "minerals": [
-            {"symbol": s, "price": fld.feats[s]["price"], "change_1w": fld.feats[s]["momentum"]["return_1w_pct"],
+            {"symbol": s, "label": universe.display(s), "lane": fld.lanes.get(s, "stock"), "price": fld.feats[s]["price"],
+             "change_1w": fld.feats[s]["momentum"]["return_1w_pct"],
              "sector": fld.snaps[s].fundamentals.get("sector")} for s in fld.watchlist if s in fld.feats],
             "gas": [{"ticker": c.ticker, "title": c.title, "implied": c.implied, "category": c.category}
                     for c in fld.contracts[:8]]})
@@ -165,11 +182,12 @@ class Arena:
                 graded = await f.housekeep(fld)
                 if graded:
                     await f.say(f.leader, f"{graded} old call(s) graded. Check the standings.", "chair")
-            if closed := self.season.tick(self.equities()):
+            if closed := self.season.tick(self.equities(), drawdowns=self.drawdowns()):
                 win = self.faction(closed["winner"]) if closed["winner"] in {f.id for f in self.factions} else None
                 await self.emit({"type": "season_end", **closed, "winner_name": win.name if win else closed["winner"]})
                 self.alert(f"Season {closed['number']} over - " + ", ".join(
-                    f"{r['faction']} {r['return_pct']:+.2f}%" for r in closed["results"]))
+                    f"{r['faction']} {r['return_pct']:+.2f}% (worst drop {r['max_drawdown_pct']:.1f}%, "
+                    f"score {r['score']:+.2f})" for r in closed["results"]))
             await self.publish()
 
             for f in self.factions:

@@ -28,7 +28,7 @@ export function candleChart(candles, cloud, levels = {}, width = 600) {
       <rect x="${W - P.r + 2}" y="${y(v) - 9}" width="${P.r - 4}" height="18" rx="4" fill="${col}"/>
       <text x="${W - P.r / 2}" y="${y(v) + 4}" text-anchor="middle" class="lvl">${label}</text>` : "";
   const last = candles[n - 1][4];
-  const ticks = [lo, (lo + hi) / 2, hi].map((v) => `<text x="${W - P.r + 6}" y="${y(v) + 4}" class="axis">${v.toFixed(v > 100 ? 0 : 2)}</text>`).join("");
+  const ticks = [lo, (lo + hi) / 2, hi].map((v) => `<text x="${W - P.r + 6}" y="${y(v) + 4}" class="axis">${v.toFixed(v > 100 ? 0 : v >= 10 ? 2 : v >= 1 ? 4 : 6)}</text>`).join("");
   return `<svg viewBox="0 0 ${W} ${H}" class="candles" style="aspect-ratio:${W}/${H}">
     ${cloudSvg}${bodies}${ticks}
     ${line(levels.target, "#22c55e", "TGT")}${line(levels.entry || last, "#e5e7eb", levels.entry ? "ENTRY" : "LAST")}${line(levels.stop, "#ef4444", "STOP")}

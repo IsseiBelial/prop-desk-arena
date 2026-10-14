@@ -2,8 +2,11 @@
 
 Each faction starts a season with whatever equity it has. When the season ends
 (after `days` calendar days), results are recorded and a new season begins from
-each faction's ending equity - profits are reinvested and losses carried. The
-winner of a season is the faction with the highest return over that season.
+each faction's ending equity - profits are reinvested and losses carried.
+
+The winner is the faction with the best RISK-ADJUSTED return, not simply the most
+money: a faction that made 8% while never dropping more than 2% beats one that made
+10% on a ride that fell 15% along the way. See `risk_adjusted`.
 """
 from __future__ import annotations
 
@@ -12,8 +15,22 @@ import os
 from datetime import datetime, timedelta, timezone
 
 
+DRAWDOWN_FLOOR = 2.0  # %, so a faction that barely traded can't score a huge ratio off a tiny drawdown
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def risk_adjusted(return_pct: float, drawdown_pct: float) -> float:
+    """Return per unit of risk taken.
+
+    A gain is divided by the worst peak-to-trough drop along the way (at least 2%).
+    A loss counts in full, so any gain ranks above breaking even, which ranks above any loss.
+    """
+    if return_pct > 0:
+        return round(return_pct / max(drawdown_pct, DRAWDOWN_FLOOR), 2)
+    return round(return_pct, 2)
 
 
 class Season:
@@ -59,17 +76,21 @@ class Season:
         return {k: round((v / self.start_equity[k] - 1) * 100, 2) if self.start_equity.get(k) else 0.0
                 for k, v in equities.items()}
 
-    def tick(self, equities: dict[str, float], now: datetime | None = None) -> dict | None:
-        """Start the first season, or close an expired one and start the next. Returns the closed season."""
+    def tick(self, equities: dict[str, float], now: datetime | None = None,
+             drawdowns: dict[str, float] | None = None) -> dict | None:
+        """Start the first season, or close an expired one and start the next. Returns the closed season.
+
+        `drawdowns` is each faction's worst drop (%) during the season; it decides the winner."""
         now = now or _now()
         closed = None
         if not self.started:
             self._start(equities, now)
         elif now >= self.ends:
-            rets = self.returns(equities)
+            rets, dds = self.returns(equities), drawdowns or {}
             results = sorted(({"faction": k, "start": self.start_equity.get(k, v), "end": round(v, 2),
-                               "return_pct": rets[k]} for k, v in equities.items()),
-                             key=lambda r: r["return_pct"], reverse=True)
+                               "return_pct": rets[k], "max_drawdown_pct": dds.get(k, 0.0),
+                               "score": risk_adjusted(rets[k], dds.get(k, 0.0))} for k, v in equities.items()),
+                             key=lambda r: (r["score"], r["return_pct"]), reverse=True)
             closed = {"number": self.number, "started": self.started, "ended": now.isoformat(timespec="seconds"),
                       "results": results, "winner": results[0]["faction"] if results else None}
             self.history.append(closed)

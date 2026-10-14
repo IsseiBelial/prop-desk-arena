@@ -92,7 +92,9 @@ def compute_features(bars: pd.DataFrame, benchmark: pd.DataFrame | None = None) 
     tk_cross = "bullish" if tk_prev <= 0 < tk_now else "bearish" if tk_prev >= 0 > tk_now else "none"
 
     ob = obv(bars)
-    obv_slope = (ob.iloc[-1] - ob.iloc[-21]) / (bars["volume"].tail(20).mean() * 20)
+    vol20, vol50 = bars["volume"].tail(20).mean(), bars["volume"].tail(50).mean()
+    # Currency pairs have no volume (no central exchange): volume-based readings come back as None.
+    obv_slope = (ob.iloc[-1] - ob.iloc[-21]) / (vol20 * 20) if vol20 > 0 else None
     up_vol = bars["volume"].tail(20)[c.diff().tail(20) > 0].sum()
     dn_vol = bars["volume"].tail(20)[c.diff().tail(20) < 0].sum()
 
@@ -136,7 +138,7 @@ def compute_features(bars: pd.DataFrame, benchmark: pd.DataFrame | None = None) 
             "cmf20": _r(cmf(bars).iloc[-1], 3),
             "obv_trend_20d": _r(obv_slope, 3),
             "up_down_volume_ratio_20d": _r(up_vol / dn_vol if dn_vol else None),
-            "volume_20d_vs_50d": _r(bars["volume"].tail(20).mean() / bars["volume"].tail(50).mean()),
+            "volume_20d_vs_50d": _r(vol20 / vol50) if vol50 > 0 else None,
             "relative_strength_vs_spy_3m_pct": rel_3m,
             "relative_strength_vs_spy_6m_pct": rel_6m,
         },

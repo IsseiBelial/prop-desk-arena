@@ -14,6 +14,8 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
+from .universe import asset_class
+
 log = logging.getLogger(__name__)
 
 
@@ -33,6 +35,7 @@ class Snapshot:
     fundamentals: dict = field(default_factory=dict)
     news: list[Headline] = field(default_factory=list)
     source: str = "synthetic"
+    asset: str = "stock"  # stock | crypto | forex
 
     @property
     def price(self) -> float:
@@ -61,7 +64,26 @@ class SyntheticProvider:
         "Options activity in {s} picks up ahead of earnings",
     ]
 
+    _CRYPTO = {
+        "good": ["Spot {s} ETF sees record inflows", "{s} network upgrade goes live without issues",
+                 "Major payments firm adds {s} support"],
+        "bad": ["Exchange hack sparks {s} sell-off", "Regulators open investigation into {s} lending desks",
+                "Large {s} holder moves coins to exchanges, traders fear a sell-off"],
+        "neutral": ["{s} funding rates flat as traders wait for the Fed", "{s} developers schedule next upgrade"],
+    }
+    _FX = {
+        "good": ["{base} rallies as central bank signals higher-for-longer rates", "Strong jobs data lifts the {base}"],
+        "bad": ["{base} slides after weak growth figures", "Central bank surprises with a rate cut; {base} falls"],
+        "neutral": ["{base} steady ahead of inflation report", "Traders await central bank minutes; {base} flat"],
+    }
+
     _EPOCH = pd.Timestamp("2019-01-01")
+    _ANCHORS = {"BTC-USD": 65000, "ETH-USD": 3400, "SOL-USD": 150, "XRP-USD": 0.6, "DOGE-USD": 0.15,
+                "EURUSD=X": 1.08, "GBPUSD=X": 1.27, "AUDUSD=X": 0.66, "NZDUSD=X": 0.6}
+
+    def __init__(self, lively: list[str] | None = None):
+        from .universe import LIVELY_FALLBACK
+        self.lively = set(lively or LIVELY_FALLBACK)
 
     def _rng(self, symbol: str, salt: str = "", daily: bool = False) -> np.random.Generator:
         # Price history is seeded per symbol only, so it stays consistent from day to
@@ -74,13 +96,23 @@ class SyntheticProvider:
         idx = pd.bdate_range(self._EPOCH, datetime.now().date())
         n = len(idx)
         rng = self._rng(symbol, "bars")
+        cls = asset_class(symbol)
         drift = rng.normal(0.0004, 0.0008)
         vol = rng.uniform(0.012, 0.028)
+        anchor = rng.uniform(30, 700)
+        if cls == "crypto":
+            vol = rng.uniform(0.03, 0.05)
+            anchor = self._ANCHORS.get(symbol, rng.uniform(0.1, 100))
+        elif cls == "forex":
+            drift, vol = rng.normal(0, 0.0001), rng.uniform(0.003, 0.006)
+            anchor = self._ANCHORS.get(symbol, rng.uniform(0.5, 1.5))
+        elif symbol in self.lively:
+            vol, anchor = rng.uniform(0.03, 0.05), rng.uniform(3, 40)
         # Regimes: every ~60 days the stock's trend changes, so setups come and go.
         regime = np.repeat(rng.normal(0, 0.0025, n // 60 + 1), 60)[:n]
         rets = rng.normal(drift, vol, n) + regime
         path = np.exp(np.cumsum(rets))
-        close = path / path[-2] * rng.uniform(30, 700)  # land at a realistic price today
+        close = path / path[-2] * anchor  # land at a realistic price today
         # Intraday drift for today's bar so prices move during the day.
         now = datetime.now(timezone.utc)
         steps = (now.hour * 60 + now.minute) // 10
@@ -92,6 +124,8 @@ class SyntheticProvider:
         low = np.minimum(open_, close) - spread
         base_vol = rng.uniform(5e6, 60e6)
         volume = base_vol * (1 + np.abs(rets) / vol * 0.5) * rng.uniform(0.7, 1.3, n)
+        if cls == "forex":
+            volume = np.zeros(n)  # FX has no central volume; Yahoo reports zeros too
         df = pd.DataFrame({"open": open_, "high": high, "low": low, "close": close, "volume": volume.round()}, index=idx)
         return df.tail(days)
 
@@ -115,16 +149,21 @@ class SyntheticProvider:
     def news(self, symbol: str) -> list[Headline]:
         rng = self._rng(symbol, "news", daily=True)
         mood = rng.normal(0, 1)
+        cls = asset_class(symbol)
+        bank = {"crypto": self._CRYPTO, "forex": self._FX}.get(cls) or \
+            {"good": self._GOOD, "bad": self._BAD, "neutral": self._NEUTRAL}
         out = []
         for i in range(int(rng.integers(2, 5))):
-            pool = self._GOOD if rng.normal(mood, 1) > 0.6 else self._BAD if rng.normal(mood, 1) < -0.6 else self._NEUTRAL
-            title = pool[int(rng.integers(len(pool)))].format(s=symbol)
+            pool = bank["good"] if rng.normal(mood, 1) > 0.6 else bank["bad"] if rng.normal(mood, 1) < -0.6 else bank["neutral"]
+            title = pool[int(rng.integers(len(pool)))].format(s=symbol.replace("-USD", ""), base=symbol[:3])
             ts = datetime.now(timezone.utc) - timedelta(hours=int(rng.integers(1, 72)))
             out.append(Headline(title=title, source="Synthetic Wire", published=ts.isoformat(timespec="minutes")))
         return out
 
     def snapshot(self, symbol: str) -> Snapshot:
-        return Snapshot(symbol, self.bars(symbol), self.fundamentals(symbol), self.news(symbol), self.name)
+        cls = asset_class(symbol)
+        fund = self.fundamentals(symbol) if cls == "stock" else {"sector": cls.title()}
+        return Snapshot(symbol, self.bars(symbol), fund, self.news(symbol), self.name, cls)
 
 
 class YahooProvider:
@@ -191,17 +230,19 @@ class YahooProvider:
 
     def snapshot(self, symbol: str) -> Snapshot:
         bars = self.bars(symbol)
+        cls = asset_class(symbol)
+        fund = {"sector": cls.title()}
         try:
-            fund = self.fundamentals(symbol)
+            if cls == "stock":  # crypto and currencies have no company fundamentals
+                fund = self.fundamentals(symbol)
         except Exception as e:  # fundamentals are nice-to-have
             log.warning("fundamentals failed for %s: %s", symbol, e)
-            fund = {}
         try:
             news = self.news(symbol)
         except Exception as e:
             log.warning("news failed for %s: %s", symbol, e)
             news = []
-        return Snapshot(symbol, bars, fund, news, self.name)
+        return Snapshot(symbol, bars, fund, news, self.name, cls)
 
 
 def make_provider(kind: str = "auto", probe_symbol: str = "SPY"):

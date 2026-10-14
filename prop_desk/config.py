@@ -44,6 +44,15 @@ class Settings:
         "AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA,AMD,JPM,XOM,LLY,COST",
     ))
     benchmark: str = os.getenv("PROP_DESK_BENCHMARK", "SPY")
+    # What the factions may trade: stocks (core watchlist), lively (fast movers found by
+    # Yahoo's screeners), crypto, forex, options (buy-only, on the stocks).
+    assets: list[str] = field(default_factory=lambda: [
+        a.strip().lower() for a in os.getenv("PROP_DESK_ASSETS", "stocks,lively,crypto,forex,options").split(",") if a.strip()])
+    lively_count: int = int(os.getenv("PROP_DESK_LIVELY_COUNT", "8"))
+    lively_min_price: float = float(os.getenv("PROP_DESK_LIVELY_MIN_PRICE", "2"))
+    lively_min_dollar_volume: float = float(os.getenv("PROP_DESK_LIVELY_MIN_DOLLAR_VOLUME", "5000000"))
+    crypto: list[str] = field(default_factory=lambda: _env_list("PROP_DESK_CRYPTO", "BTC-USD,ETH-USD,SOL-USD,XRP-USD,DOGE-USD"))
+    forex: list[str] = field(default_factory=lambda: _env_list("PROP_DESK_FOREX", "EURUSD=X,GBPUSD=X,AUDUSD=X,NZDUSD=X"))
     candidates_per_session: int = int(os.getenv("PROP_DESK_CANDIDATES", "3"))
 
     # --- Execution ---
@@ -72,12 +81,23 @@ class Settings:
 
     # --- Risk (enforced in code, not by the AI) ---
     risk_per_trade_pct: float = float(os.getenv("PROP_DESK_RISK_PCT", "1.0"))
-    max_position_pct: float = float(os.getenv("PROP_DESK_MAX_POS_PCT", "10"))
+    max_position_pct: float = float(os.getenv("PROP_DESK_MAX_POS_PCT", "10"))  # stocks
+    crypto_max_position_pct: float = float(os.getenv("PROP_DESK_CRYPTO_MAX_POS_PCT", "10"))
+    # Currencies move ~5x less than stocks, so a position can be bigger for the same risk (no leverage).
+    forex_max_position_pct: float = float(os.getenv("PROP_DESK_FOREX_MAX_POS_PCT", "50"))
     max_open_positions: int = int(os.getenv("PROP_DESK_MAX_POSITIONS", "8"))
     max_daily_loss_pct: float = float(os.getenv("PROP_DESK_MAX_DAILY_LOSS_PCT", "3"))
     allow_shorts: bool = os.getenv("PROP_DESK_ALLOW_SHORTS", "false").lower() == "true"
     max_per_sector: int = int(os.getenv("PROP_DESK_MAX_PER_SECTOR", "2"))
     earnings_blackout_days: int = int(os.getenv("PROP_DESK_EARNINGS_BLACKOUT_DAYS", "3"))
+
+    # --- Options: buy-only (calls/puts); the premium paid is the most that can be lost ---
+    options_total_pct: float = float(os.getenv("PROP_DESK_OPTIONS_TOTAL_PCT", "20"))  # of equity, all options together
+    options_trade_pct: float = float(os.getenv("PROP_DESK_OPTIONS_TRADE_PCT", "10"))  # of equity, one option trade
+    options_min_days: int = int(os.getenv("PROP_DESK_OPTIONS_MIN_DAYS", "14"))
+    options_max_days: int = int(os.getenv("PROP_DESK_OPTIONS_MAX_DAYS", "45"))
+    options_take_profit_pct: float = float(os.getenv("PROP_DESK_OPTIONS_TAKE_PROFIT_PCT", "100"))
+    options_stop_pct: float = float(os.getenv("PROP_DESK_OPTIONS_STOP_PCT", "50"))
 
     # --- Prediction markets (Kalshi) - only when no stock trade got done ---
     kalshi_enabled: bool = os.getenv("PROP_DESK_KALSHI", "true").lower() == "true"

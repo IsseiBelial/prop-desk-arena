@@ -16,10 +16,11 @@ from typing import TYPE_CHECKING
 
 from ..agents import personas as P
 from ..agents.brain import make_brain
-from ..broker import PaperBroker, review_contract, review_trade
+from ..broker import PaperBroker, review_contract, review_option, review_trade
 from ..indicators import ichimoku
 from ..kalshi import Contract
 from ..market_data import Snapshot
+from ..options import SyntheticOptions, pick
 from ..scorecard import Scorecard
 
 if TYPE_CHECKING:
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 SIGN = {"LONG": 1, "YES": 1, "SHORT": -1, "NO": -1, "PASS": 0}
+UNITS = {"stock": "shares", "crypto": "coins", "forex": "units"}
 
 
 @dataclass
@@ -38,6 +40,7 @@ class Field:
     bench_price: float | None = None
     risk_on: bool = True
     watchlist: list[str] = field(default_factory=list)
+    lanes: dict[str, str] = field(default_factory=dict)  # symbol -> stock | lively | crypto | forex
     contracts: list[Contract] = field(default_factory=list)
     focus: list[str] | None = None  # symbols the user asked for
 
@@ -146,6 +149,19 @@ class Faction:
                     graded += 1
         if graded:
             self.scorecard.save()
+        pricer = self.arena.options or SyntheticOptions()
+        for contract, o in list(self.broker.options.items()):
+            spot = fld.snaps[o.underlying].price if o.underlying in fld.snaps else None
+            if spot is None:
+                continue
+            try:
+                value = await loop.run_in_executor(None, pricer.value, o, spot)
+            except Exception:
+                value = None
+            if t := self.broker.mark_option(contract, value, spot, self.s):
+                await self.say("risk", f"{self.name}: closed the {t['title']} - {t['reason']} "
+                                       f"(P&L ${t['pnl']:+,.2f}).", "risk", o.underlying)
+                self.arena.alert(f"{self.name} closed {t['title']} ({t['reason']}) P&L ${t['pnl']:+,.2f}")
         self.broker.snapshot(fld.bench_price)
         return graded
 
@@ -173,8 +189,10 @@ class Faction:
         ne = snap.fundamentals.get("next_earnings")
         dte = (date.fromisoformat(str(ne)[:10]) - date.today()).days if ne else None
         rv = review_trade(self.broker, sym, direction, feats["price"], feats["volatility"]["atr14"], self.s,
-                          sector=snap.fundamentals.get("sector") or "", risk_on=fld.risk_on, days_to_earnings=dte)
-        verdict = (f"Signed off for {self.name}: {rv.qty} shares, stop {rv.stop}, target {rv.target}, "
+                          sector=snap.fundamentals.get("sector") or "", risk_on=fld.risk_on, days_to_earnings=dte,
+                          asset=snap.asset)
+        verdict = (f"Signed off for {self.name}: {rv.qty:g} {UNITS.get(snap.asset, 'shares')} "
+                   f"(${rv.qty * rv.entry:,.2f}), stop {rv.stop}, target {rv.target}, "
                    f"max loss ${rv.risk_dollars:,.2f}." if rv.approved else f"VETO for {self.name}.")
         await self.say("risk", f"{verdict} {' '.join(rv.notes)}", "risk", sym, approved=rv.approved)
         if not rv.approved:
@@ -184,6 +202,49 @@ class Faction:
         await self.emit({"type": "order", **order})
         self.arena.alert(f"{self.name}: {order['action']} {order['qty']} {sym} @ {order['price']} "
                          f"(stop {order['stop']}, target {order['target']})")
+        self.broker.snapshot(fld.bench_price)
+        return order
+
+    async def option_play(self, sym: str, kind: str, fld: Field, votes: dict, why: str) -> dict | None:
+        """A strong conviction on a stock can add a bought call (or put). Buy-only: max loss is the premium."""
+        if not self.arena.options or fld.lanes.get(sym, "stock") not in ("stock", "lively") or sym not in fld.snaps:
+            return None
+        snap, feats = fld.snaps[sym], fld.feats[sym]
+        await self.phase("risk", sym)
+        ne = snap.fundamentals.get("next_earnings")
+        earnings = date.fromisoformat(str(ne)[:10]) if ne else None
+        vol = (feats["volatility"]["realized_vol_20d_annual_pct"] or 40) / 100
+        try:
+            quotes = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: self.arena.options.chain(sym, snap.price, vol, kind, min_days=self.s.options_min_days,
+                                                       max_days=self.s.options_max_days))
+        except Exception as e:
+            await self.emit({"type": "notice", "text": f"Couldn't load the {sym} option chain: {e}"})
+            return None
+        if earnings and earnings >= date.today():
+            # Only expiries before the earnings date: option prices collapse once the news is out.
+            quotes = [q for q in quotes if date.fromisoformat(q.expiry) < earnings]
+            if not quotes:
+                await self.say("risk", f"No {kind}s on {sym} for {self.name}: earnings on {earnings} land before "
+                                       "any expiry we'd buy, and options get crushed after earnings.", "risk", sym,
+                               approved=False)
+                return None
+        eq = self.broker.equity
+        budget = min(eq * self.s.options_trade_pct / 100, eq * self.s.options_total_pct / 100 - self.broker.option_exposure)
+        long_leg, short_leg = pick(quotes, snap.price, kind, budget, self.s.options_min_days, self.s.options_max_days)
+        if not long_leg:
+            await self.say("risk", f"No liquid {kind}s on {sym} {self.s.options_min_days}-{self.s.options_max_days} "
+                                   "days out. Skipping the option.", "risk", sym, approved=False)
+            return None
+        rv = review_option(self.broker, long_leg, self.s, short_leg)
+        await self.say("risk", (f"Option for {self.name} ({why}): " + ("signed off. " if rv.approved else "VETO. "))
+                       + " ".join(rv.notes), "risk", sym, approved=rv.approved)
+        if not rv.approved:
+            return None
+        await self.phase("execute", sym)
+        order = self.broker.open_option(long_leg, rv, votes, short_leg)
+        await self.emit({"type": "order", **order})
+        self.arena.alert(f"{self.name}: {order['action']} {order['qty']}x {order['title']} for ${order['cost']:,.2f}")
         self.broker.snapshot(fld.bench_price)
         return order
 
@@ -207,11 +268,13 @@ class Faction:
         bars = snap.bars.tail(90)
         _, _, span_a, span_b = ichimoku(snap.bars)
         # The cloud under each bar is the spans computed 26 bars earlier.
-        cloud = [[None if a != a else round(float(a), 2), None if b != b else round(float(b), 2)]
+        d = 2 if feats["price"] >= 10 else 4 if feats["price"] >= 1 else 6
+        cloud = [[None if a != a else round(float(a), d), None if b != b else round(float(b), d)]
                  for a, b in zip(span_a.shift(26).tail(90), span_b.shift(26).tail(90))]
         return {"type": "candidate", "kind": "stock", "symbol": sym, "title": sym, "price": feats["price"],
+                "lane": fld.lanes.get(sym, snap.asset),
                 "features": feats, "fundamentals": snap.fundamentals, "cloud": cloud,
-                "candles": [[str(i.date()), round(r.open, 2), round(r.high, 2), round(r.low, 2), round(r.close, 2)]
+                "candles": [[str(i.date()), round(r.open, d), round(r.high, d), round(r.low, d), round(r.close, d)]
                             for i, r in bars.iterrows()]}
 
     def record(self, kind: str, key: str, title: str, price: float, unit_votes: dict[str, str],
@@ -238,6 +301,7 @@ class Faction:
             "calls": me["calls"], "hits": me["hits"], "misses": me["calls"] - me["hits"],
             "net": me["hits"] * 2 - me["calls"], "accuracy": me["accuracy"], "streak": me["streak"],
             "recent": me["recent"], "equity": b["equity"], "total_pnl": b["total_pnl"], "day_pnl": b["day_pnl"],
-            "positions": len(b["positions"]), "contracts": len(b["contracts"]), "cost_usd": self.cost_usd,
+            "positions": len(b["positions"]), "contracts": len(b["contracts"]), "options": len(b["options"]),
+            "cost_usd": self.cost_usd,
             "units": units,
         }

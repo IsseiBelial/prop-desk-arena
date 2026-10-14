@@ -12,6 +12,9 @@ const money = (v) => (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString(undefined
 // Small accounts show cents; big ones round to dollars.
 const kmoney = (v) => (v < 0 ? "-$" : "$") + (Math.abs(v) >= 1e6 ? (Math.abs(v) / 1e6).toFixed(2) + "M"
   : Math.abs(v) >= 1e4 ? Math.round(Math.abs(v)).toLocaleString() : Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+// Prices: cents for stocks, more digits for currencies and cheap coins.
+const fpx = (v) => { const a = Math.abs(+v); return (+v).toFixed(a >= 10 ? 2 : a >= 1 ? 4 : 6); };
+const LANES = { stock: "Core stock", lively: "Lively stock", crypto: "Crypto", forex: "Currency pair" };
 const sgn = (v, d = 2) => (v > 0 ? "+" : "") + Number(v).toFixed(d);
 const short = (s) => (s && s.length > 16 ? s.slice(0, 15) + "…" : s || "");
 
@@ -51,7 +54,8 @@ async function init() {
   $("#rules").textContent =
     `Same rules for every faction: ${k.risk_per_trade_pct}% risk per trade, ${k.max_position_pct}% max position, ` +
     `${k.max_open_positions} positions, ${k.max_daily_loss_pct}% daily loss limit, ${kmoney(k.starting_cash)} starting capital each. ` +
-    `${k.allow_shorts ? "Shorts allowed." : "Long-only."}` + (k.kalshi ? ` Gas (prediction markets) only when a faction made no stock trade; ${k.kalshi_min_edge}¢+ edge after fees.` : "") +
+    `${k.allow_shorts ? "Shorts allowed." : "Long-only."}` +
+    ((k.assets || []).includes("options") ? ` Options buy-only, max ${k.options_trade_pct}% per trade and ${k.options_total_pct}% in total.` : "") + (k.kalshi ? ` Gas (prediction markets) only when a faction made no stock trade; ${k.kalshi_min_edge}¢+ edge after fees.` : "") +
     (st.autorun_minutes ? ` Auto-runs every ${st.autorun_minutes} min.` : "");
   buildTabs();
   S.season = st.season;
@@ -131,7 +135,7 @@ function handle(e) {
       if (!S.replaying) setTimeout(() => camera("map"), 2600);
       break;
     case "order":
-      if (e.kind !== "contract" && S.idea?.symbol === e.symbol && S.idea?.faction === f) { S.levels = { entry: e.price, stop: e.stop, target: e.target }; renderIdea(); }
+      if (e.kind === "stock" && S.idea?.symbol === e.symbol && S.idea?.faction === f) { S.levels = { entry: e.price, stop: e.stop, target: e.target }; renderIdea(); }
       break;
     case "contest":
       battle.contest(e.symbol);
@@ -363,7 +367,8 @@ function addNotice(t) {
 function claims(f) {
   const p = S.portfolios[f];
   if (!p || !battle) return;
-  battle.setClaims(f, [...(p.positions || []).map((x) => x.symbol), ...(p.contracts || []).map((c) => c.ticker)]);
+  battle.setClaims(f, [...(p.positions || []).map((x) => x.symbol), ...(p.contracts || []).map((c) => c.ticker),
+    ...(p.options || []).map((o) => o.underlying)]);
 }
 
 function seasonText() {
@@ -383,7 +388,7 @@ function renderResources() {
     return `<div class="res" style="--c:${f.color}" title="${esc(f.name)}: equity, return this season, open positions">
       <span class="ico">◆</span><span class="eq">${kmoney(p.equity)}</span>
       <span class="${r >= 0 ? "pos" : "neg"}">${sgn(r)}%</span>
-      <span class="sup">${(p.positions || []).length + (p.contracts || []).length}/${S.settings.max_open_positions}</span></div>`;
+      <span class="sup">${(p.positions || []).length + (p.contracts || []).length + (p.options || []).length}/${S.settings.max_open_positions}</span></div>`;
   }).join("");
 }
 
@@ -391,7 +396,7 @@ function renderStandings(rows) {
   if (!rows) return;
   S.standings = rows;
   renderResources();
-  const lead = rows[0] && rows[0].season_return_pct !== rows[rows.length - 1]?.season_return_pct;
+  const lead = rows[0] && rows[0].score !== rows[rows.length - 1]?.score;
   $("#standings").innerHTML = rows.map((r, i) => {
     const f = S.fmap[r.id] || {};
     const pct = r.accuracy == null ? "–" : Math.round(r.accuracy * 100) + "%";
@@ -402,18 +407,18 @@ function renderStandings(rows) {
       <div class="fname">${esc(r.name)}</div><div class="motto">${esc(f.motto || "")}${r.seasons_won ? ` · 🏆×${r.seasons_won}` : ""}</div>
       <div class="season-ret ${sr >= 0 ? "pos" : "neg"}">${sgn(sr)}%<span>this season · from ${kmoney(r.season_start ?? r.equity)}</span></div>
       <div class="nums">
-        <div><label>Net calls</label><b>${r.net > 0 ? "+" : ""}${r.net}</b></div>
+        <div title="Return per unit of risk: a gain divided by the worst drop (at least 2%); a loss counts in full. Decides the season."><label>Score</label><b class="${(r.score ?? 0) >= 0 ? "pos" : "neg"}">${sgn(r.score ?? 0)}</b></div>
+        <div title="Worst fall from a high point this season"><label>Worst drop</label><b class="${(r.max_drawdown_pct ?? 0) > 5 ? "neg" : ""}">${(r.max_drawdown_pct ?? 0).toFixed(1)}%</b></div>
         <div><label>Hit rate</label><b>${pct}</b></div>
-        <div><label>Graded</label><b>${r.calls}</b></div>
+        <div><label>Net calls</label><b>${r.net > 0 ? "+" : ""}${r.net}</b></div>
         <div><label>Equity</label><b>${kmoney(r.equity)}</b></div>
-        <div><label>Total P&amp;L</label><b class="${r.total_pnl >= 0 ? "pos" : "neg"}">${money(r.total_pnl)}</b></div>
         <div><label>AI cost</label><b>$${(r.cost_usd || 0).toFixed(2)}</b></div>
       </div><div class="form">${form}</div></div>`;
   }).join("");
   const hist = S.season?.history || [];
-  $("#seasonHistory").innerHTML = (seasonText() ? `<b>${seasonText()}</b> · ends ${esc((S.season.ends || "").slice(0, 10))} · winner = highest return; profits roll over` : "") +
+  $("#seasonHistory").innerHTML = (seasonText() ? `<b>${seasonText()}</b> · ends ${esc((S.season.ends || "").slice(0, 10))} · winner = best risk-adjusted score (return ÷ worst drop); profits roll over` : "") +
     hist.slice().reverse().map((h) => `<div>Season ${h.number}: ` + h.results.map((x) =>
-      `<span style="color:${S.fmap[x.faction]?.color || "#ccc"}">${esc(S.fmap[x.faction]?.name || x.faction)} ${sgn(x.return_pct)}%${x.faction === h.winner ? " 🏆" : ""}</span>`).join(" · ") + `</div>`).join("");
+      `<span style="color:${S.fmap[x.faction]?.color || "#ccc"}">${esc(S.fmap[x.faction]?.name || x.faction)} ${sgn(x.return_pct)}%${x.score != null ? ` (score ${sgn(x.score)})` : ""}${x.faction === h.winner ? " 🏆" : ""}</span>`).join(" · ") + `</div>`).join("");
   const graded = rows.reduce((n, r) => n + r.calls, 0);
   $("#lbNote").textContent = graded ? `${graded} graded faction calls` : "calls are graded after a few days, or when a market settles";
   const legion = rows.find((r) => r.id === "legion");
@@ -459,8 +464,8 @@ function renderIdea() {
       (S.edge ? `<div class="edge ${S.edge.edge >= S.settings.kalshi_min_edge ? "pos" : "neg"}">Buy ${S.edge.side} @ ${S.edge.ask}¢ · edge ${sgn(S.edge.edge, 1)}¢ per contract after fees</div>` : "");
   } else {
     const fu = e.fundamentals || {};
-    head = `<div class="idea-head" style="--fc:${fac.color}"><b>${esc(e.symbol)}</b> <span class="mono">$${e.price}</span><span class="by">${esc(fac.name)}</span>
-      <span class="muted">${esc(fu.sector || "")}${fu.next_earnings ? " · earnings " + esc(String(fu.next_earnings).slice(0, 10)) : ""}</span></div>`;
+    head = `<div class="idea-head" style="--fc:${fac.color}"><b>${esc(e.symbol)}</b> <span class="mono">$${fpx(e.price)}</span><span class="by">${esc(fac.name)}</span>
+      <span class="muted"><span class="lane lane-${esc(e.lane || "stock")}">${esc(LANES[e.lane] || "Stock")}</span> ${e.lane === "crypto" || e.lane === "forex" ? "" : esc(fu.sector || "")}${fu.next_earnings ? " · earnings " + esc(String(fu.next_earnings).slice(0, 10)) : ""}</span></div>`;
     chart = e.candles?.length ? candleChart(e.candles, e.cloud || [], S.levels, $("#idea").clientWidth) : "";
   }
   if (e.faction === "legion") {
@@ -498,9 +503,14 @@ function renderBook() {
   if (!p) return;
   $("#positions tbody").innerHTML = p.positions.length
     ? p.positions.map((x) => `<tr><td><b>${esc(x.symbol)}</b></td><td>${x.side}</td><td>${x.qty}</td>
-        <td>${x.entry}</td><td>${(+x.last).toFixed(2)}</td><td>${x.stop}</td><td>${x.target}</td>
+        <td>${fpx(x.entry)}</td><td>${fpx(x.last)}</td><td>${fpx(x.stop)}</td><td>${fpx(x.target)}</td>
         <td class="${x.pnl >= 0 ? "pos" : "neg"}">${money(x.pnl)}</td></tr>`).join("")
-    : `<tr><td colspan="8" class="empty">No open stock positions.</td></tr>`;
+    : `<tr><td colspan="8" class="empty">No open positions.</td></tr>`;
+  $("#options tbody").innerHTML = (p.options || []).length
+    ? p.options.map((o) => `<tr><td class="n"><b>${esc(o.label)}</b></td><td>${o.qty}</td><td>$${(+o.price).toFixed(2)}</td>
+        <td>$${(+o.last).toFixed(2)}</td><td>${money(o.cost)}</td><td>${esc(o.expiry.slice(5))}</td>
+        <td class="${o.pnl >= 0 ? "pos" : "neg"}">${money(o.pnl)}</td></tr>`).join("")
+    : `<tr><td colspan="7" class="empty">No open options.</td></tr>`;
   $("#contracts tbody").innerHTML = (p.contracts || []).length
     ? p.contracts.map((c) => `<tr><td class="n" title="${esc(c.title)}">${esc(c.title.length > 38 ? c.title.slice(0, 37) + "…" : c.title)}</td>
         <td><span class="tag ${c.side}">${c.side}</span></td><td>${c.qty}</td><td>${c.price}¢</td><td>${c.last}¢</td>
@@ -513,10 +523,10 @@ function renderBlotter() {
   const all = S.factions.flatMap((f) => (S.portfolios[f.id]?.trades || []).map((t) => ({ ...t, f })));
   all.sort((a, b) => (a.time < b.time ? 1 : -1));
   $("#blotter").innerHTML = all.length ? all.slice(0, 80).map((t) => {
-    const name = t.kind === "contract" ? (t.title || t.symbol) : t.symbol;
-    const px = t.kind === "contract" ? `${t.price}¢` : t.price;
+    const name = t.kind === "contract" || t.kind === "option" ? (t.title || t.symbol) : t.symbol;
+    const px = t.kind === "contract" ? `${t.price}¢` : t.kind === "option" ? `$${(+t.price).toFixed(2)}` : fpx(t.price);
     const tail = t.pnl !== undefined ? ` · <span class="${t.pnl >= 0 ? "pos" : "neg"}">${money(t.pnl)}</span> (${esc(t.reason)})`
-      : t.stop ? ` · stop ${t.stop} · tgt ${t.target}` : t.fee ? ` · fee $${t.fee}` : "";
+      : t.stop ? ` · stop ${fpx(t.stop)} · tgt ${fpx(t.target)}` : t.fee ? ` · fee $${t.fee}` : t.cost ? ` · cost ${money(t.cost)}` : "";
     return `<div><span class="fx" style="color:${t.f.color}">${esc(t.f.name.replace("The ", "").toUpperCase())}</span> ${esc(t.time.slice(5, 16).replace("T", " "))} · <b>${esc(t.action)}</b> ${t.qty} ${esc(short(name))} @ ${px}${tail}</div>`;
   }).join("") : `<div class="empty">No trades yet.</div>`;
 }
