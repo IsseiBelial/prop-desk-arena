@@ -93,6 +93,9 @@ and the season history are wiped.
 
 ## Run it
 
+**Handing setup to Claude Code on the spare PC?** Give it [HANDOFF.md](HANDOFF.md): step-by-step instructions
+with a check after each step.
+
 **Running a full season on a spare PC?** Follow [SETUP.md](SETUP.md) for step-by-step setup, the health
 check (`python -m prop_desk.check`) and keeping it running.
 
