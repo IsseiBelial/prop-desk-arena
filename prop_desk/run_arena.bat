@@ -2,7 +2,7 @@
 REM Prop Desk Arena launcher for Windows. Double-click it, or let Task Scheduler start it.
 cd /d "%~dp0.."
 if not exist ".venv\Scripts\python.exe" (
-  echo Python environment not found. Follow prop_desk\SETUP.md step 3 first.
+  echo Python environment not found. Follow SETUP.md step 3 first.
   pause
   exit /b 1
 )
