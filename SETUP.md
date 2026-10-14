@@ -7,7 +7,7 @@ differences are in [step 7](#7-mac-or-linux-instead-of-windows).
 **What you need**
 - The spare PC, plugged in, with internet access
 - Your Claude account (Team or Max plan)
-- Access to the GitHub repo `IsseiBelial/vllmTesting`
+- Access to the GitHub repo `IsseiBelial/prop-desk-arena`
 
 > Everything is paper trading. No real money moves. The PC only needs to reach Anthropic, Yahoo Finance and
 > Kalshi.
@@ -54,14 +54,14 @@ usage limits. You don't need an API key.
 
 ```powershell
 cd $HOME
-git clone -b ccr-ef4ab90f-8bj1g0 https://github.com/IsseiBelial/vllmTesting.git prop-desk-arena
+git clone https://github.com/IsseiBelial/prop-desk-arena.git prop-desk-arena
 cd prop-desk-arena
 py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r prop_desk\requirements.txt
 ```
 
 - If Git asks you to sign in to GitHub, do so in the browser window it opens.
-- Once PR #1 is merged, you can leave out `-b ccr-ef4ab90f-8bj1g0`.
+- Python 3.11 works too: use `py -3.11` if that's what the PC has.
 - The last command takes a few minutes.
 
 ## 4. Choose your settings
