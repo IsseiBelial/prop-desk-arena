@@ -34,7 +34,7 @@ class Persona:
     # two different families, so three price-chart traders can't approve it alone.
     family: str = ""
     look: str = ""  # character accessory drawn in the GUI
-    faction: str = "legion"  # legion | ascendant | brood | neutral
+    faction: str = "legion"  # legion | ascendant | brood | syndicate | neutral
     style: str = "human"  # how the GUI draws them: human | seer | drone | queen
 
     def public(self) -> dict:
@@ -306,7 +306,36 @@ BROOD = [Persona(i, n, "Drone · " + d, "trader", _DRONE_COLORS[k % 6], n[:2].up
             "Feels every drone at once. Many small signals, one will.", faction="brood", style="queen"),
 ]
 
-ALL = LEGION + ASCENDANT + BROOD + [RISK]
+# ---------------------------------------------------------------- The Syndicate
+# Setup hunters: each hunter knows one published swing-trading setup and grades it
+# A/B/C (rules ported from tradermonty/claude-trading-skills, MIT). The Lookout reads
+# the whole market; the Fixer pays out only when enough graded setups line up.
+# (Rules live in factions/syndicate.py.)
+SYNDICATE = [
+    Persona("lookout", "Wren Ashby", "Market Lookout", "researcher", "#fde68a", "WA",
+            "Counts distribution days and follow-through days on SPY and reads breadth. Says when it's hunting season.",
+            faction="syndicate", look="spyglass"),
+    Persona("burst", "Rook Halvorsen", "Momentum Burst Hunter", "trader", "#fb923c", "RH",
+            "Hunts 4% breakout days on rising volume after a quiet spell, for a 3-5 day ride.",
+            faction="syndicate", look="bandana", family="price"),
+    Persona("vcp", "Mara Quill", "Volatility Contraction Hunter", "trader", "#fdba74", "MQ",
+            "Only stalks stage-2 uptrends whose pullbacks keep getting shallower, and buys the break of the pivot.",
+            faction="syndicate", look="monocle", family="price"),
+    Persona("pivot", "Jax Okoro", "Gap & Drift Hunter", "trader", "#f59e0b", "JO",
+            "Follows big gaps on huge volume that hold their ground: the drift after a surprise.",
+            faction="syndicate", look="eyepatch", family="price"),
+    Persona("hammer", "Sable Ortiz", "Exhaustion Hammer Hunter", "trader", "#ea580c", "SO",
+            "Buys a strong stock's pullback on the day the sellers run out: a hammer candle on volume.",
+            faction="syndicate", look="hood", family="price"),
+    Persona("growth", "Theo Grant", "Growth Leader Hunter", "trader", "#fcd34d", "TG",
+            "Wants market leaders with growing earnings near their highs, outrunning the market.",
+            faction="syndicate", look="cap", family="fundamental"),
+    Persona("fixer", "Vance Kincaid", "The Fixer", "chair", "#f97316", "VK",
+            "Pays a bounty only for graded setups, and only when the Lookout says the market allows it.",
+            faction="syndicate", look="stetson"),
+]
+
+ALL = LEGION + ASCENDANT + BROOD + SYNDICATE + [RISK]
 BY_ID = {p.id: p for p in ALL}
 
 DISCIPLINE_PROMPTS = {

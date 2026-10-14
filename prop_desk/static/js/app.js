@@ -1,7 +1,7 @@
 // Prop Desk Arena client: turns desk events into an RTS battlefield, faction scenes and panels.
 import { BattleMap, BASES, drawMinimap } from "./map.js";
 import { Council, VOTERS } from "./council.js";
-import { Conclave, HiveMind } from "./scenes.js";
+import { BountyBoard, Conclave, HiveMind, HUNTERS } from "./scenes.js";
 import { candleChart, probabilityBar, raceChart } from "./charts.js";
 import { unitSprite } from "./sprites.js";
 import { Voice } from "./voice.js";
@@ -28,10 +28,10 @@ const SCENE_PHASES = new Set(["bear", "round1", "debate", "vote"]);
 
 const S = {
   agents: {}, factions: [], fmap: {}, standings: [], portfolios: {}, idea: null, votes: { 1: {}, 2: {} },
-  models: {}, swarm: null, levels: {}, edge: null, turn: null, view: "map", unitTab: "legion", bookTab: "legion",
-  msgCount: 0, replaying: false, focus: null, labSpot: 0, running: false, settings: {}, season: null,
+  models: {}, swarm: null, setups: {}, posture: null, bounty: null, levels: {}, edge: null, turn: null, view: "map",
+  unitTab: "legion", bookTab: "legion", msgCount: 0, replaying: false, focus: null, labSpot: 0, running: false, settings: {}, season: null,
 };
-let battle, council, conclave, hive;
+let battle, council, conclave, hive, den;
 const voice = new Voice();
 
 // ------------------------------------------------------------------ setup
@@ -47,6 +47,12 @@ async function init() {
   council = new Council($("#warroom"), legionAgents, { sign: "WAR ROOM" });
   conclave = new Conclave($("#conclave"), S.agents);
   hive = new HiveMind($("#hive"), S.agents, st.agents.filter((a) => a.style === "drone").map((a) => a.id));
+  den = new BountyBoard($("#den"), S.agents);
+  // Only show rooms for the factions that are competing (PROP_DESK_FACTIONS).
+  for (const id of ["legion", "ascendant", "brood", "syndicate"]) {
+    if (S.fmap[id]) continue;
+    document.querySelectorAll(`[data-view="${id}"], [data-cam="${id}"]`).forEach((b) => b.classList.add("hidden"));
+  }
   $("#mode").textContent = st.mode;
   $("#mode").className = "badge" + (st.mode.startsWith("Claude") ? " ai" : "");
   $("#cost").textContent = "$" + (st.cost_usd || 0).toFixed(2);
@@ -64,7 +70,7 @@ async function init() {
   renderBook();
   renderRace();
   setRunning(st.running);
-  showPortrait(S.agents.chair, "Iron Legion, reporting for duty.", "Press R to run a session. 1/2/3 jump to each faction's room.");
+  showPortrait(S.agents.chair, "Iron Legion, reporting for duty.", "Press R to run a session. 1-4 jump to each faction's room.");
   setInterval(() => drawMinimap($("#minimap"), battle), 300);
   connect();
 }
@@ -109,7 +115,16 @@ function handle(e) {
     case "phase": onPhase(e); break;
     case "tool": onTool(e); break;
     case "warp": onWarp(e); break;
-    case "swarm": for (const [d, sym] of Object.entries(e.assign)) { const same = Object.entries(e.assign).filter(([, s]) => s === sym); battle.toField(d, sym, same.findIndex(([x]) => x === d), same.length); } break;
+    case "swarm": case "hunt":
+      for (const [d, sym] of Object.entries(e.assign)) { const same = Object.entries(e.assign).filter(([, s]) => s === sym); battle.toField(d, sym, same.findIndex(([x]) => x === d), same.length); }
+      break;
+    case "posture":
+      S.posture = e; den.posture(e);
+      if (!S.replaying) battle.moveTo("lookout", BASES.syndicate.x + 92, BASES.syndicate.y - 2);
+      renderIdea();
+      break;
+    case "setup": S.setups[e.agent] = e; den.setup(e); renderIdea(); break;
+    case "bounty": S.bounty = e; den.bounty(e); if (S.idea) S.idea.bounty = e; renderIdea(); break;
     case "candidate": onCandidate(e); break;
     case "status": battle.setStatus(e.agent, e.status); sceneFor(f)?.setStatus(e.agent, e.status); break;
     case "message": addMessage(e); break;
@@ -163,7 +178,7 @@ function handle(e) {
 }
 
 const unitsOf = (f) => Object.values(S.agents).filter((a) => a.faction === f).map((a) => a.id);
-const sceneFor = (f) => ({ legion: council, ascendant: conclave, brood: hive })[f];
+const sceneFor = (f) => ({ legion: council, ascendant: conclave, brood: hive, syndicate: den })[f];
 
 function onTurn(e) {
   S.turn = e.faction;
@@ -211,7 +226,7 @@ function onWarp(e) {
 }
 
 function onCandidate(e) {
-  S.idea = e; S.votes = { 1: {}, 2: {} }; S.models = {}; S.swarm = null; S.levels = {}; S.edge = null;
+  S.idea = e; S.votes = { 1: {}, 2: {} }; S.models = {}; S.swarm = null; S.setups = {}; S.bounty = null; S.levels = {}; S.edge = null;
   battle.select(e.symbol);
   sceneFor(e.faction)?.setSubject(e);
   if (e.faction === "ascendant") ["vael", "kyth", "oriel", "lumen"].forEach((id, i) => battle.toField(id, e.symbol, i, 4));
@@ -233,7 +248,7 @@ function onVote(e) {
 function camera(v, manual = false) {
   if (!manual && !$("#autocam").checked) return;
   S.view = v;
-  for (const k of ["map", "legion", "ascendant", "brood"]) $("#view-" + k).classList.toggle("hidden", k !== v);
+  for (const k of ["map", "legion", "ascendant", "brood", "syndicate"]) $("#view-" + k).classList.toggle("hidden", k !== v);
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === v));
   clearBubble();
 }
@@ -494,6 +509,17 @@ function renderIdea() {
     body = `<div class="swarmgrid">${cells}</div><div class="edge ${S.swarm.agree >= 0.68 && S.swarm.active >= 8 ? "pos" : "neg"}">
       ${Object.values(S.swarm.votes).filter((v) => v > 0).length} drones bullish · ${Object.values(S.swarm.votes).filter((v) => v < 0).length} bearish ·
       ${Math.round(S.swarm.agree * 100)}% agreement (needs 68% of 8+ active)</div>`;
+  } else if (e.faction === "syndicate" && !contract) {
+    const rows = HUNTERS.map((id) => {
+      const a = S.agents[id], s = S.setups[id];
+      const g = s ? (s.grade ? `<span class="tag LONG">${s.grade}</span>` : `<span class="tag PASS">–</span>`) : "…";
+      return `<tr><td class="n"><b style="color:${a.color}">${esc(a.name.split(" ")[0])}</b> <span class="muted small">${esc(a.role.replace(" Hunter", ""))}</span></td>
+        <td>${g}</td><td class="small">${s ? esc(s.detail) : ""}</td><td>${s?.points ? s.points.toFixed(1) : ""}</td></tr>`;
+    }).join("");
+    const p = S.posture, b = e.bounty;
+    body = (p ? `<div class="edge ${p.state === "green" ? "pos" : "neg"}">Market posture: ${esc(p.label)} · ${esc(p.detail)}</div>` : "") +
+      (b ? `<div class="edge ${b.ok ? "pos" : "neg"}">${b.points.toFixed(1)} setup points (needs ${b.needed > 90 ? "a market uptrend" : b.needed}) · ${esc(b.reason)}</div>` : "") +
+      `<table class="votes"><thead><tr><th>Hunter</th><th>Grade</th><th>Setup</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
   $("#idea").innerHTML = head + chart + body;
 }

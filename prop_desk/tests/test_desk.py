@@ -206,15 +206,16 @@ def run(arena, symbols=None):
     return events
 
 
-def test_arena_session_runs_all_three_factions(settings):
+def test_arena_session_runs_all_four_factions(settings):
     a = Arena(settings, None)
     ev = run(a)
     assert not [e for e in ev if e["type"] == "error"]
-    assert [e["faction"] for e in ev if e["type"] == "turn"] == ["legion", "ascendant", "brood"]
+    assert [e["faction"] for e in ev if e["type"] == "turn"] == ["legion", "ascendant", "brood", "syndicate"]
     assert any(e["type"] == "model" for e in ev) and any(e["type"] == "swarm_vote" for e in ev)
     assert any(e["type"] == "message" and e["agent"] == "bear" for e in ev)  # devil's advocate spoke
+    assert any(e["type"] == "posture" for e in ev)  # the Syndicate's Lookout read the market
     standings = [e for e in ev if e["type"] == "standings"][-1]["factions"]
-    assert {r["id"] for r in standings} == {"legion", "ascendant", "brood"}
+    assert {r["id"] for r in standings} == {"legion", "ascendant", "brood", "syndicate"}
     for f in a.factions:  # separate books, every idea recorded as a faction call
         assert os.path.exists(os.path.join(settings.data_dir, f.id, "ledger.json"))
         assert f.scorecard.calls and all(f.id in c["votes"] for c in f.scorecard.calls)
@@ -504,3 +505,136 @@ def test_map_shows_every_lane(settings):
     ev = run(Arena(settings, None))
     lanes = {m["lane"] for m in [e for e in ev if e["type"] == "map"][0]["minerals"]}
     assert lanes == {"stock", "lively", "crypto", "forex"}
+
+
+# ------------------------------------------------------------- the Syndicate (setup hunters)
+import numpy as np
+import pandas as pd
+
+from prop_desk.factions import syndicate as syn
+from prop_desk.market_data import Headline, Snapshot
+
+
+def path(*legs, start=100.0):
+    """Closes that walk through waypoints: path((n_days, target), ...)."""
+    out = [start]
+    for n, target in legs:
+        out += list(np.linspace(out[-1], target, n + 1)[1:])
+    return np.array(out)
+
+
+def frame(close, vol=1_000_000, spread=0.004, opens=None):
+    close = np.asarray(close, float)
+    vol = np.broadcast_to(np.asarray(vol, float), close.shape).copy()
+    o = close if opens is None else opens
+    idx = pd.bdate_range(end="2026-10-13", periods=len(close))
+    return pd.DataFrame({"open": o, "high": np.maximum(o, close) * (1 + spread), "low": np.minimum(o, close) * (1 - spread),
+                         "close": close, "volume": vol}, index=idx)
+
+
+FLAT_SPY = frame(path((259, 101)))
+
+
+def test_momentum_burst_grades_a_breakout_from_a_quiet_base():
+    c = path((200, 60), (30, 60.5))  # uptrend, then a tight 30-day base
+    b = frame(c, 1_000_000)
+    b.loc[b.index[-1], ["open", "high", "low", "close", "volume"]] = [60.6, 63.9, 60.4, 63.7, 2_500_000]
+    s = syn.momentum_burst(b, gate=5)
+    assert s["grade"] in ("A", "B") and "4% breakout" in s["detail"] and s["stop"] == 60.4
+    assert syn.momentum_burst(frame(c), gate=5)["grade"] is None  # a quiet day is no burst
+
+
+def test_exhaustion_hammer_after_a_pullback():
+    c = path((150, 70), (60, 100), (10, 88))  # strong run, then a 12% pullback
+    b = frame(c, 1_000_000)
+    b.loc[b.index[-1], ["open", "high", "low", "close", "volume"]] = [87.0, 88.4, 83.0, 88.0, 1_800_000]
+    snap = Snapshot("HAM", b, {"market_cap_b": 50})
+    s = syn.exhaustion_hammer(snap, gate=5)
+    assert s["grade"] is not None and "pullback" in s["detail"]
+    b.loc[b.index[-1], ["open", "low"]] = [83.5, 83.0]  # a big body is not a hammer
+    assert syn.exhaustion_hammer(Snapshot("HAM", b, {}), gate=5)["grade"] is None
+
+
+def test_vcp_finds_shrinking_contractions():
+    c = path((199, 100), (12, 80), (12, 99), (10, 90), (10, 99), (8, 95.5), (8, 98.5), start=50)
+    s = syn.vcp(frame(c, np.linspace(1.5e6, 0.6e6, len(c)), spread=0.008), FLAT_SPY)
+    assert "contractions" in s["detail"] and s["score"] > 50, s
+    assert syn.vcp(frame(path((259, 60))), FLAT_SPY)["grade"] is None  # a downtrend is not stage 2
+
+
+def test_gap_and_drift():
+    c = path((240, 100), (19, 100))
+    opens = c.copy()
+    b = frame(c, 1_000_000, opens=opens)
+    i = len(c) - 1  # gap today: +8% open on 4x volume, closing near the high
+    b.iloc[i, :] = [108.0, 112.5, 107.5, 112.0, 4_000_000]
+    snap = Snapshot("GAP", b, {"market_cap_b": 5}, [Headline("GAP beats earnings, raises guidance", "wire", "")])
+    s = syn.gap_drift(snap)
+    assert s["grade"] is not None and "guidance raise" in s["detail"]
+    assert syn.gap_drift(Snapshot("FLAT", frame(c), {}))["grade"] is None
+
+
+def test_growth_leader_needs_earnings_and_leadership():
+    c = path((259, 200), start=100)  # doubled while SPY went nowhere
+    strong = Snapshot("LDR", frame(c), {"earnings_growth_pct": 55, "revenue_growth_pct": 30})
+    assert syn.growth_leader(strong, frame(path((259, 103))))["grade"] in ("A", "B")
+    weak = Snapshot("LAG", frame(c), {"earnings_growth_pct": 2, "revenue_growth_pct": 1})
+    assert syn.growth_leader(weak, frame(path((259, 103))))["grade"] in (None, "C")
+
+
+def test_distribution_days_and_posture():
+    c = path((240, 120))
+    vol = np.full(len(c) + 20, 1e6)
+    tail = []
+    for k in range(20):  # down 0.5% on higher volume every other day
+        tail.append(tail[-1] * (0.995 if k % 2 == 0 else 1.001) if tail else c[-1] * 0.995)
+        vol[len(c) + k] = 1.2e6 if k % 2 == 0 else 1e6
+    spy = frame(np.concatenate([c, tail]), vol)
+    dd = syn.distribution_days(spy)
+    assert dd["d25"] >= 6 and dd["risk"] == "severe"
+    assert syn.market_posture(spy, None)["state"] == "red"
+    calm = syn.market_posture(frame(path((259, 130))), {"raw": 0.6, "bearish": False, "date": "x", "ma8": .6, "ma200": .6})
+    assert calm["state"] == "green" and "60%" in calm["detail"]
+
+
+def test_follow_through_day():
+    c = list(path((200, 120)))
+    c += [118, 116.5, 115, 113.5, 112]  # a correction, 5 down days
+    c += [112.5, 113, 113.4]  # rally attempt days 1-3
+    c += [113.4 * 1.017, 115.6, 116]  # day 4: +1.7% on higher volume
+    vol = np.full(len(c), 1e6)
+    vol[-3] = 1.6e6
+    ftd = syn.follow_through(frame(c, vol))
+    assert ftd["state"] == "follow-through" and ftd["day"] == 4
+
+
+def test_circuit_breaker():
+    from datetime import datetime, timezone
+    now = datetime(2026, 10, 14, 6, tzinfo=timezone.utc)  # 18 hours after yesterday's noon trades
+    t = lambda h, pnl: {"time": f"2026-10-1{h}T12:00:00+00:00", "pnl": pnl}  # noqa: E731
+    assert syn.circuit_breaker([], 100, now) is None
+    assert syn.circuit_breaker([t(2, 1.0), t(3, 0.5)], 100, now) is None
+    assert "cooldown" in syn.circuit_breaker([t(3, -0.2), t(3, -0.3)], 100, now)
+    assert "revenge" in syn.circuit_breaker([t(3, 0.4), t(3, -0.3)], 100, now)
+    assert "today" in syn.circuit_breaker([{"time": "2026-10-14T05:00:00+00:00", "pnl": -2.5}], 100, now)
+    later = datetime(2026, 10, 15, 6, tzinfo=timezone.utc)
+    assert syn.circuit_breaker([t(3, -0.2), t(3, -0.3)], 100, later) is None  # cooldown over
+
+
+def test_syndicate_only_hunts_stocks_and_records_calls(settings):
+    settings.factions = ["syndicate"]
+    a = Arena(settings, None)
+    ev = run(a)
+    assert not [e for e in ev if e["type"] == "error"]
+    f = a.faction("syndicate")
+    fld_lanes = [e for e in ev if e["type"] == "map"][0]["minerals"]
+    coins = [m["symbol"] for m in fld_lanes if m["lane"] in ("crypto", "forex")]
+    assert coins and not [e for e in ev if e["type"] == "candidate" and e["symbol"] in coins]
+    for c in f.scorecard.calls:
+        assert set(c["votes"]) == set(syn.HUNTERS) | {"syndicate"}
+
+
+def test_per_faction_model(settings, monkeypatch):
+    monkeypatch.setenv("PROP_DESK_MODEL_LEGION", "claude-sonnet-5-5")
+    settings.model = "claude-opus-5-5"
+    assert settings.model_for("legion") == "claude-sonnet-5-5" and settings.model_for("brood") == "claude-opus-5-5"

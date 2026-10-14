@@ -3,6 +3,7 @@
 const SKIN = {
   scout: "#c68e63", newshound: "#f1c9a5", bear: "#a86b45", oracle: "#e8b98f", fundamental: "#7a4b2e",
   momentum: "#f3cfae", cloud: "#eac096", flow: "#8d5a3b", news: "#f6d5bb", risk: "#d9a37c", chair: "#b47a52",
+  fixer: "#9c6644", lookout: "#e9c4a0", burst: "#c68e63", vcp: "#f1d2b6", pivot: "#6f4429", hammer: "#d9a37c", growth: "#e2b48c",
 };
 
 function shade(hex, amt) {
@@ -39,6 +40,19 @@ const ACCESSORY = {
     <rect x="-15" y="-45" width="30" height="3" rx="1.5" fill="#eab308"/>`,
   crown: () => `<path d="M-10 -50 l3 -9 l4 6 l3 -8 l3 8 l4 -6 l3 9 z" fill="#fbbf24" stroke="#b45309" stroke-width="1"/>
     <circle cx="0" cy="-55" r="1.6" fill="#ef4444"/>`,
+  // The Syndicate's gear
+  stetson: () => `<ellipse cx="0" cy="-50" rx="19" ry="4.5" fill="#3f2412" stroke="#1c1008"/>
+    <path d="M-10 -50 q1 -12 10 -12 q9 0 10 12 z" fill="#5b3a1e" stroke="#1c1008"/><rect x="-10" y="-53" width="20" height="3" fill="#f97316"/>`,
+  bandana: () => `<path d="M-12 -38 h24 l-3 8 h-18 z" fill="#dc2626" stroke="#7f1d1d" stroke-width=".8"/>
+    <circle cx="-3" cy="-34" r=".9" fill="#fecaca"/><circle cx="4" cy="-35" r=".9" fill="#fecaca"/>`,
+  monocle: () => `<circle cx="5" cy="-41" r="4.4" fill="#fde68a" fill-opacity=".35" stroke="#a16207" stroke-width="1.6"/>
+    <path d="M9 -39 q4 6 1 14" fill="none" stroke="#a16207" stroke-width=".8"/><rect x="-12" y="-54" width="24" height="5" rx="2" fill="#1f2937"/>`,
+  eyepatch: () => `<path d="M-13 -46 l26 4" stroke="#111827" stroke-width="1.4"/><ellipse cx="-4.2" cy="-41.5" rx="3.6" ry="3" fill="#111827"/>`,
+  hood: () => `<path d="M-14 -36 q-1 -21 14 -21 q15 0 14 21 q-4 -10 -14 -11 q-10 1 -14 11 z" fill="#44403c" stroke="#1c1917"/>`,
+  cap: () => `<path d="M-12 -47 q0 -10 12 -10 q12 0 12 10 z" fill="#f97316" stroke="#9a3412"/><path d="M4 -48 h13 q-2 3 -13 3 z" fill="#9a3412"/>`,
+  spyglass: () => `<g transform="translate(9,-29) rotate(-35)"><rect width="16" height="5" rx="1.5" fill="#a16207" stroke="#713f12"/>
+    <rect x="12" y="-1" width="6" height="7" rx="1.5" fill="#ca8a04"/></g>
+    <path d="M-13 -48 q13 -9 26 0" fill="none" stroke="#7c2d12" stroke-width="3"/>`,
 };
 
 // Returns SVG markup for one character. `scale` sizes it; legs animate via the .walking class.

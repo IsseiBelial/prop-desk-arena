@@ -58,7 +58,8 @@ class Faction:
         root = os.path.join(self.s.data_dir, self.id)
         self.broker = PaperBroker(os.path.join(root, "ledger.json"), self.s.starting_cash)
         self.scorecard = Scorecard(os.path.join(root, "scorecard.json"), self.s.call_horizon_days)
-        self.brain = make_brain(arena.backend, self.s.model, self.s.effort)
+        self.model = self.s.model_for(self.id)
+        self.brain = make_brain(arena.backend, self.model, self.s.effort)
         self.research_cost = 0.0
 
     # ------------------------------------------------------------ identity
@@ -76,7 +77,7 @@ class Faction:
 
     def public(self) -> dict:
         return {"id": self.id, "name": self.name, "color": self.color, "motto": self.motto, "leader": self.leader,
-                "units": [u.id for u in self.units]}
+                "units": [u.id for u in self.units], "model": self.model if self.brain else None}
 
     # ------------------------------------------------------------ messaging
     async def emit(self, e: dict) -> None:

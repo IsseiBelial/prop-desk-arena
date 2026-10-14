@@ -67,7 +67,8 @@ class Settings:
     # Each faction keeps its own ledger and scorecard under data_dir/<faction>/.
     data_dir: str = os.getenv("PROP_DESK_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
     factions: list[str] = field(default_factory=lambda: [
-        f.strip().lower() for f in os.getenv("PROP_DESK_FACTIONS", "legion,ascendant,brood").split(",") if f.strip()])
+        f.strip().lower() for f in os.getenv("PROP_DESK_FACTIONS", "legion,ascendant,brood,syndicate").split(",")
+        if f.strip()])
     # Seconds between messages in rules mode so humans can follow the floor.
     pace: float = float(os.getenv("PROP_DESK_PACE", "0.6"))
 
@@ -123,6 +124,10 @@ class Settings:
     @property
     def sessions_dir(self) -> str:
         return os.path.join(self.data_dir, "sessions")
+
+    def model_for(self, faction: str) -> str:
+        """A faction's own model (PROP_DESK_MODEL_LEGION=... etc.), or the shared PROP_DESK_MODEL."""
+        return os.getenv(f"PROP_DESK_MODEL_{faction.upper()}") or self.model
 
 
 settings = Settings()

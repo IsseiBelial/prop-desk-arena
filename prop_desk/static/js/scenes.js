@@ -1,5 +1,5 @@
-// Decision scenes for the Ascendant (the Conclave) and the Brood (the Hive Mind).
-import { seer, drone, queen } from "./sprites.js";
+// Decision scenes for the Ascendant (the Conclave), the Brood (the Hive Mind) and the Syndicate (the Bounty Board).
+import { seer, drone, queen, sprite } from "./sprites.js";
 
 const NS = "http://www.w3.org/2000/svg";
 const el = (tag, attrs = {}, parent) => {
@@ -230,4 +230,127 @@ export class HiveMind extends SceneBase {
   }
 
   edge(e) { this.mText.textContent = `SWARM WANTS ${e.side} · EDGE ${e.edge > 0 ? "+" : ""}${e.edge}¢`; }
+}
+
+// ---------------------------------------------------------------- The Bounty Board
+// Each hunter pins a poster for their one setup; the Lookout's signal says whether the
+// market lets anyone hunt; the Fixer pays out only on enough graded setups.
+export const HUNTERS = ["burst", "vcp", "pivot", "hammer", "growth"];
+const POSTER_X = [160, 330, 500, 670, 840];
+const GRADE_COLOR = { A: "#15803d", B: "#b45309", C: "#57534e" };
+const POSTURE = { green: ["#22c55e", "HUNTING SEASON"], yellow: ["#facc15", "UNDER PRESSURE"], red: ["#ef4444", "STAND DOWN"] };
+
+export class BountyBoard extends SceneBase {
+  constructor(svg, agents) {
+    super();
+    this.svg = svg;
+    this.chars = {};
+    this.posters = {};
+    svg.innerHTML = `<defs>
+      <linearGradient id="bwall" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#2a1a10"/><stop offset="1" stop-color="#170d07"/></linearGradient>
+      <linearGradient id="bfloor" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3b2414"/><stop offset="1" stop-color="#1a0f08"/></linearGradient>
+      <radialGradient id="blamp" cx="50%" cy="0%" r="90%"><stop offset="0" stop-color="#fb923c" stop-opacity=".35"/><stop offset="1" stop-color="#fb923c" stop-opacity="0"/></radialGradient>
+      <filter id="bg2" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>`;
+    el("rect", { width: 1000, height: 460, fill: "url(#bwall)" }, svg);
+    const planks = el("g", { stroke: "#1c1008", "stroke-width": 2 }, svg);
+    for (let x = 0; x < 1000; x += 58) el("line", { x1: x, y1: 0, x2: x, y2: 460 }, planks);
+    el("rect", { y: 452, width: 1000, height: 168, fill: "url(#bfloor)" }, svg);
+    for (let y = 470; y < 620; y += 26) el("line", { x1: 0, y1: y, x2: 1000, y2: y, stroke: "#1c1008", "stroke-width": 1.5 }, svg);
+    el("ellipse", { cx: 500, cy: 260, rx: 520, ry: 300, fill: "url(#blamp)" }, svg);
+    const sign = el("text", { x: 500, y: 44, "text-anchor": "middle", class: "scene-sign orange" }, svg); sign.textContent = "THE BOUNTY BOARD";
+    // The cork board and one poster per hunter
+    el("rect", { x: 68, y: 58, width: 864, height: 214, rx: 6, fill: "#6b4423", stroke: "#3f2412", "stroke-width": 6 }, svg);
+    HUNTERS.forEach((id, i) => {
+      const a = agents[id]; if (!a) return;
+      const cx = POSTER_X[i], g = el("g", { transform: `translate(${cx},166) rotate(${[-2, 1.5, -1, 2, -1.5][i]})`, class: "poster" }, svg);
+      el("rect", { x: -74, y: -98, width: 148, height: 196, fill: "#e7d3a8", stroke: "#a8916a", "stroke-width": 1.5 }, g);
+      el("circle", { cx: 0, cy: -90, r: 4, fill: "#b91c1c", stroke: "#450a0a" }, g);
+      el("text", { y: -68, "text-anchor": "middle", class: "p-wanted" }, g).textContent = "WANTED";
+      el("text", { y: -50, "text-anchor": "middle", class: "p-setup" }, g).textContent = a.role.replace(" Hunter", "").toUpperCase();
+      el("line", { x1: -60, y1: -42, x2: 60, y2: -42, stroke: "#7c5c3a", "stroke-width": 1 }, g);
+      const grade = el("text", { y: 22, "text-anchor": "middle", class: "p-grade" }, g); grade.textContent = "?";
+      const d1 = el("text", { y: 50, "text-anchor": "middle", class: "p-detail" }, g);
+      const d2 = el("text", { y: 64, "text-anchor": "middle", class: "p-detail" }, g);
+      const pts = el("text", { y: 86, "text-anchor": "middle", class: "p-points" }, g);
+      this.posters[id] = { g, grade, d1, d2, pts };
+      // The hunter stands under their poster
+      const h = el("g", { class: "agent", transform: `translate(${cx},432)` }, svg);
+      h.innerHTML = sprite(a, 1.6);
+      el("text", { y: 20, "text-anchor": "middle", class: "c-nametag", fill: a.color }, h).textContent = a.name;
+      this.chars[id] = { g: h, x: cx, y: 432, h: 120 };
+    });
+    // The Lookout's signal tower
+    const tw = el("g", { transform: "translate(950,300)" }, svg);
+    el("rect", { x: -6, y: 0, width: 12, height: 170, fill: "#3f2412" }, tw);
+    el("rect", { x: -22, y: -6, width: 44, height: 104, rx: 8, fill: "#111827", stroke: "#3f2412", "stroke-width": 3 }, tw);
+    this.lights = {};
+    ["red", "yellow", "green"].forEach((k, i) => {
+      this.lights[k] = el("circle", { cx: 0, cy: 14 + i * 32, r: 12, fill: POSTURE[k][0], opacity: .18 }, tw);
+    });
+    this.postureText = el("text", { x: 930, y: 488, "text-anchor": "end", class: "orb-sub" }, svg);
+    this.postureText.textContent = "MARKET: …";
+    const lk = agents.lookout, fx = agents.fixer;
+    if (lk) {
+      const g = el("g", { class: "agent", transform: "translate(880,600)" }, svg);
+      g.innerHTML = sprite(lk, 1.9);
+      el("text", { y: 18, "text-anchor": "middle", class: "c-nametag", fill: lk.color }, g).textContent = lk.name;
+      this.chars.lookout = { g, x: 880, y: 600, h: 140 };
+    }
+    if (fx) {
+      const g = el("g", { class: "agent", transform: "translate(120,600)" }, svg);
+      g.innerHTML = sprite(fx, 2.0);
+      el("text", { y: 18, "text-anchor": "middle", class: "c-nametag", fill: fx.color }, g).textContent = fx.name;
+      this.chars.fixer = { g, x: 120, y: 600, h: 150 };
+    }
+    // The Fixer's ledger: setup points against what the market posture demands
+    this.meter = el("g", { transform: "translate(380,476)" }, svg);
+    el("rect", { width: 240, height: 14, rx: 7, fill: "#1c1008", stroke: "#9a3412" }, this.meter);
+    this.mFill = el("rect", { width: 0, height: 14, rx: 7, fill: "#f97316" }, this.meter);
+    this.mBar = el("line", { x1: 0, x2: 0, y1: -4, y2: 18, stroke: "#fef3c7", "stroke-width": 2 }, this.meter);
+    this.mText = el("text", { x: 120, y: 34, "text-anchor": "middle", class: "orb-sub" }, this.meter);
+    this.ticket("#f97316");
+    this.stampInit();
+  }
+
+  setSubject(e) {
+    this.subjectText(e);
+    for (const p of Object.values(this.posters)) {
+      p.grade.textContent = "?"; p.grade.setAttribute("fill", "#a8916a");
+      p.d1.textContent = ""; p.d2.textContent = ""; p.pts.textContent = "";
+      p.g.classList.remove("hit", "cold");
+    }
+    this.mFill.setAttribute("width", 0); this.mBar.setAttribute("x1", 0); this.mBar.setAttribute("x2", 0);
+    this.mText.textContent = "HUNTERS CHECKING THEIR SETUPS…";
+  }
+
+  setup(e) {
+    const p = this.posters[e.agent];
+    if (!p) return;
+    p.grade.textContent = e.grade || "–";
+    p.grade.setAttribute("fill", GRADE_COLOR[e.grade] || "#a8916a");
+    const [a, b] = wrap(e.detail || "", 24);
+    p.d1.textContent = a; p.d2.textContent = b;
+    p.pts.textContent = e.points ? `${e.points.toFixed(1)} pts · ×${(e.weight ?? 1).toFixed(2)}` : "no setup";
+    p.g.classList.toggle("cold", !e.grade);
+    p.g.classList.remove("hit"); if (e.grade) { void p.g.getBBox(); p.g.classList.add("hit"); }
+  }
+
+  posture(e) {
+    for (const [k, c] of Object.entries(this.lights)) {
+      c.setAttribute("opacity", k === e.state ? 1 : .18);
+      c.setAttribute("filter", k === e.state ? "url(#bg2)" : "");
+    }
+    this.postureText.textContent = `MARKET: ${(POSTURE[e.state] || ["", e.state])[1]}`;
+    this.postureText.setAttribute("fill", (POSTURE[e.state] || ["#fde68a"])[0]);
+  }
+
+  bounty(e) {
+    const max = Math.max(e.needed * 2, e.points, 1);
+    this.mFill.setAttribute("width", 240 * Math.min(1, e.points / max));
+    this.mFill.setAttribute("fill", e.ok ? "#22c55e" : "#f97316");
+    const bx = 240 * e.needed / max;
+    this.mBar.setAttribute("x1", bx); this.mBar.setAttribute("x2", bx);
+    this.mText.textContent = e.needed > 90 ? "NO NEW LONGS IN A CORRECTION" : `${e.points.toFixed(1)} SETUP POINTS · ${e.needed} NEEDED`;
+  }
 }

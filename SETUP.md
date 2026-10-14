@@ -71,12 +71,14 @@ copy prop_desk\arena.env.example prop_desk\arena.env
 notepad prop_desk\arena.env
 ```
 
-The defaults already match the plan: $100 each, 30-day seasons, rounds at 9:45am and 3:30pm US-Eastern.
-Things you might change:
+The defaults already match the plan: four factions with $100 each, 30-day seasons, rounds at 9:45am and 3:30pm
+US-Eastern, and Iron Legion on Sonnet while the other three use Opus. Things you might change:
 
 | Setting | Why |
 |---|---|
-| `PROP_DESK_MODEL=claude-sonnet-5-5` | Uses about half the plan usage of Opus. Good if you hit limits. |
+| `PROP_DESK_MODEL_LEGION=claude-sonnet-5-5` | Iron Legion makes almost all the Claude calls, so it runs on Sonnet to halve its cost. Delete the line to put it back on Opus. |
+| `PROP_DESK_MODEL=claude-sonnet-5-5` | Puts every faction on Sonnet. Good if you still hit limits. |
+| `PROP_DESK_FACTIONS` | Who competes. Remove one to sit it out. |
 | `PROP_DESK_SCHEDULE_ET=09:45,12:30,15:30` | Three rounds a day instead of two. Uses more plan usage. |
 | `PROP_DESK_RISK_PCT` / `PROP_DESK_MAX_POS_PCT` | How aggressive every faction may be. The defaults are 1% risk per trade and 10% max per stock. |
 | `PROP_DESK_ASSETS` | What they may trade. The default is everything: stocks, lively stocks, crypto, currencies and options. Remove any you don't want. |
@@ -84,8 +86,9 @@ Things you might change:
 
 Save the file and close Notepad.
 
-**Rough plan usage:** each round is about $2.20 at API prices, almost all of it Iron Legion. Two rounds a day
-over about 22 trading days comes to about $95 a month of usage on your plan.
+**Rough plan usage:** with Iron Legion on Sonnet, each round is about $1.20 at API prices, almost all of it Iron
+Legion. Two rounds a day over about 22 trading days comes to about $55 a month of usage on your plan (about $95 with
+everyone on Opus).
 
 ## 5. Run the health check
 
@@ -110,7 +113,7 @@ If anything says `[FAIL]`, the line under it tells you what to do. Also see [Tro
 2. Open a browser on the PC and go to **http://localhost:8000**.
 3. Check the badges at the top right. They should read **Claude plan · claude-…** and
    **data: yahoo · markets: kalshi**. If you see "synthetic", the PC can't reach the market data. Re-run step 5.
-4. Press **R** to run a test round and watch the three factions take their turns. It takes about 5 minutes.
+4. Press **R** to run a test round and watch the four factions take their turns. It takes about 5 minutes.
 5. When you're happy with it, press **X** (Reset) so the test round doesn't count. **Season 1 starts at the
    next scheduled round.**
 
