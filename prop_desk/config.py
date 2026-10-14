@@ -1,6 +1,27 @@
-"""Desk settings. Everything can be overridden with environment variables."""
+"""Desk settings.
+
+Set them in `prop_desk/arena.env` (copy `arena.env.example`; one KEY=value per line),
+or as environment variables. Real environment variables win over the file.
+"""
 import os
 from dataclasses import dataclass, field
+
+ENV_FILE = os.getenv("PROP_DESK_ENV_FILE", os.path.join(os.path.dirname(__file__), "arena.env"))
+
+
+def _load_env_file(path: str) -> None:
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_env_file(ENV_FILE)
 
 
 def _env_list(name: str, default: str) -> list[str]:

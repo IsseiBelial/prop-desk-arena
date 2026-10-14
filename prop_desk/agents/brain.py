@@ -132,9 +132,9 @@ def plan_logged_in() -> bool:
     try:
         import claude_agent_sdk
 
-        cli = os.path.join(os.path.dirname(claude_agent_sdk.__file__), "_bundled", "claude")
-        if not os.path.exists(cli):
-            cli = "claude"
+        bundled = os.path.join(os.path.dirname(claude_agent_sdk.__file__), "_bundled")
+        cli = next((os.path.join(bundled, n) for n in ("claude", "claude.exe")
+                    if os.path.exists(os.path.join(bundled, n))), "claude")  # else Claude Code on PATH
         out = subprocess.run([cli, "auth", "status", "--json"], capture_output=True, text=True, timeout=30)
         return bool(json.loads(out.stdout or "{}").get("loggedIn"))
     except Exception as e:

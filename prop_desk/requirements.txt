@@ -6,5 +6,6 @@ pandas>=2.2
 numpy>=1.26
 pydantic>=2.7
 yfinance>=0.2.50
+tzdata>=2024.1  # timezone data; Windows has none built in
 # tests
 pytest>=8

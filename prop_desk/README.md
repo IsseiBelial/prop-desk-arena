@@ -61,6 +61,9 @@ and the season history are wiped.
 
 ## Run it
 
+**Running a full season on a spare PC?** Follow [SETUP.md](SETUP.md) for step-by-step setup, the health
+check (`python -m prop_desk.check`) and keeping it running.
+
 ```bash
 pip install -r prop_desk/requirements.txt
 claude auth login                        # once, with Claude Code: lets the Arena use your Claude plan (or set ANTHROPIC_API_KEY)
