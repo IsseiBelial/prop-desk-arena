@@ -12,6 +12,7 @@
   --legion: #60a5fa;
   --ascendant: #fbbf24;
   --brood: #d946ef;
+  --syndicate: #f97316;
   --warn: #facc15;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -87,7 +88,7 @@ button { font: inherit; cursor: pointer; }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } }
 
 /* ---------- console (minimap · portrait · command card) */
-.console { display: grid; grid-template-columns: 200px minmax(0, 1fr) 222px; gap: 10px; margin-top: 10px; }
+.console { display: grid; grid-template-columns: 200px minmax(0, 1fr) 270px; gap: 10px; margin-top: 10px; }
 .minimap { border: 2px solid var(--bevel); background: #000; aspect-ratio: 1200 / 720; border-radius: 3px; }
 .minimap svg { width: 100%; height: 100%; display: block; }
 .portrait { display: flex; gap: 12px; align-items: stretch; background: linear-gradient(180deg, #0f1420, #090b11); border: 2px solid var(--bevel); border-radius: 3px; padding: 8px; min-width: 0; }
@@ -100,8 +101,8 @@ button { font: inherit; cursor: pointer; }
 .prole { font-size: 12px; color: var(--muted); }
 .quote { font: italic 600 14px Inter, system-ui, sans-serif; color: #f1f5f9; margin-top: 4px; min-height: 20px; }
 .subtitle { font-size: 12px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.commands { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-.commands button { position: relative; aspect-ratio: 1; min-height: 52px; background: linear-gradient(180deg, #243047, #121826); border: 1px solid #4b5675;
+.commands { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; align-content: start; }
+.commands button { position: relative; aspect-ratio: 1; min-height: 46px; background: linear-gradient(180deg, #243047, #121826); border: 1px solid #4b5675;
   border-radius: 4px; color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 2px; }
 .commands button i { font-style: normal; font-size: 17px; line-height: 1; }
 .commands button span { font-size: 10px; color: #cbd5e1; }
@@ -117,7 +118,7 @@ button { font: inherit; cursor: pointer; }
 
 /* ---------- battlefield */
 .base-label { font: 800 11px var(--mono); letter-spacing: .12em; paint-order: stroke; stroke: #000; stroke-width: 3px; }
-.base-label.legion { fill: var(--legion); } .base-label.ascendant { fill: var(--ascendant); } .base-label.brood { fill: var(--brood); } .base-label.neutral { fill: var(--warn); }
+.base-label.legion { fill: var(--legion); } .base-label.ascendant { fill: var(--ascendant); } .base-label.brood { fill: var(--brood); } .base-label.syndicate { fill: var(--syndicate); } .base-label.neutral { fill: var(--warn); }
 .bld-label { font: 700 8px var(--mono); fill: #cbd5e1; letter-spacing: .1em; }
 .blink { animation: blink 1.6s infinite; } @keyframes blink { 50% { opacity: .25; } }
 .pulse { animation: pulse 2.2s ease-in-out infinite; } @keyframes pulse { 50% { opacity: .25; } }
@@ -148,11 +149,20 @@ button { font: inherit; cursor: pointer; }
 .flag { animation: rise .4s ease; } @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 .contest { animation: pop .3s ease; }
 
-/* ---------- scenes (War Room, Conclave, Hive Mind) */
+/* ---------- scenes (War Room, Conclave, Hive Mind, Bounty Board) */
 .neon-sign { font: 900 22px var(--mono); letter-spacing: .14em; fill: #fdba74; filter: drop-shadow(0 0 6px #f97316); }
 .scene-sign { font: 900 26px var(--mono); letter-spacing: .2em; }
 .scene-sign.gold { fill: #fde68a; filter: drop-shadow(0 0 8px #f59e0b); }
 .scene-sign.pink { fill: #f5d0fe; filter: drop-shadow(0 0 8px #c026d3); }
+.scene-sign.orange { fill: #fed7aa; filter: drop-shadow(0 0 8px #ea580c); }
+.p-wanted { font: 900 15px Georgia, "Times New Roman", serif; letter-spacing: .25em; fill: #3f2412; }
+.p-setup { font: 800 10px var(--mono); letter-spacing: .06em; fill: #7c2d12; }
+.p-grade { font: 900 64px Georgia, "Times New Roman", serif; }
+.p-detail { font: 600 9.5px var(--mono); fill: #44403c; }
+.p-points { font: 800 10px var(--mono); fill: #9a3412; }
+.poster { transition: opacity .3s; }
+.poster.cold { opacity: .55; }
+.poster.hit .p-grade { animation: slam .45s cubic-bezier(.2, 1.6, .4, 1); transform-box: fill-box; transform-origin: center; }
 .orb-pct { font: 900 34px var(--mono); fill: #1c1004; } .orb-sub { font: 800 11px var(--mono); fill: #fde68a; letter-spacing: .1em; }
 .g-pct { font: 800 12px var(--mono); fill: #f8fafc; }
 .arc { transition: stroke-dasharray .8s ease; }
@@ -206,7 +216,7 @@ button { font: inherit; cursor: pointer; }
 .tag.PASS { background: #1e293b; color: #cbd5e1; }
 
 /* ---------- standings */
-.standings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.standings { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
 .fcard { position: relative; border: 1px solid var(--line); border-top: 3px solid var(--c); border-radius: 6px; padding: 10px 12px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--c) 10%, #0b0d14), #0b0d14); }
 .fcard.leader { box-shadow: 0 0 18px color-mix(in srgb, var(--c) 35%, transparent); }
@@ -293,6 +303,8 @@ td.n { font-family: inherit; white-space: normal; }
     grid-template-areas: "stage" "standings" "chat" "units" "idea" "race" "book" "blotter"; }
   .console { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .portrait { grid-column: 1 / -1; grid-row: 1; }
+  .commands { grid-column: 1 / -1; }
+  .commands button { min-height: 0; }
   .standings { grid-template-columns: minmax(0, 1fr); }
   .chat { min-height: 0; height: 420px; }
   .bubble { max-width: 200px; font-size: 11px; }

@@ -1,4 +1,4 @@
-"""The Arena: three trading factions, one market, one scoreboard.
+"""The Arena: four trading factions, one market, one scoreboard.
 
 Each session:
   1. Scouting   - load prices, fundamentals, headlines and prediction markets once (the "map")
@@ -53,11 +53,14 @@ class Arena:
 
     @property
     def mode(self) -> str:
-        if self.backend == "plan":
-            return f"Claude plan · {self.s.model}"
-        if self.backend == "api":
-            return f"Claude API · {self.s.model}"
-        return "Rules (offline)"
+        if not self.backend:
+            return "Rules (offline)"
+        models = self.s.model
+        odd = [f"{f.name.replace('The ', '')} {f.model.replace('claude-', '')}"
+               for f in self.factions if f.model != self.s.model]
+        if odd:  # some factions run on their own model
+            models += " (" + ", ".join(odd) + ")"
+        return f"Claude {'plan' if self.backend == 'plan' else 'API'} · {models}"
 
     @property
     def cost_usd(self) -> float:

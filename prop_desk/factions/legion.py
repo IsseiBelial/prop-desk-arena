@@ -1,6 +1,6 @@
 """Iron Legion: disciplined specialists who research, argue and vote.
 
-The most human of the three factions. A quant researcher (a Claude Agent SDK
+The most human of the four factions. A quant researcher (a Claude Agent SDK
 agent) hunts for ideas, a news officer briefs, a devil's advocate attacks, and
 five discipline traders vote blind, debate, and vote again in the War Room.
 """
@@ -99,7 +99,7 @@ class IronLegion(Faction):
                 reports={s: {**self._view(scout, snaps[s], feats[s]), "headlines": [h.title for h in snaps[s].news]}
                          for s in scores},
                 screen=scores, holdings=list(self.broker.positions))
-            agent = ResearchAgent(scout, self.s.model, self.s.effort, self.emit, self.s.research_budget_usd)
+            agent = ResearchAgent(scout, self.model, self.s.effort, self.emit, self.s.research_budget_usd)
             await self.emit({"type": "status", "agent": "scout", "status": "thinking"})
             try:
                 slate = await agent.hunt(
@@ -342,7 +342,7 @@ class IronLegion(Faction):
         by_ticker = {c.ticker: c for c in markets}
 
         if self.brain:
-            agent = ResearchAgent(oracle, self.s.model, self.s.effort, self.emit, self.s.research_budget_usd)
+            agent = ResearchAgent(oracle, self.model, self.s.effort, self.emit, self.s.research_budget_usd)
             await self.emit({"type": "status", "agent": "oracle", "status": "thinking"})
             try:
                 slate = await agent.hunt(

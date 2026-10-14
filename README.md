@@ -1,6 +1,6 @@
 # Prop Desk Arena
 
-Three AI trading factions, one market, one scoreboard. Each faction trades a different philosophy with its
+Four AI trading factions, one market, one scoreboard. Each faction trades a different philosophy with its
 own paper money. They all face the same prices and the same risk rules, and every call they make is graded
 afterwards. The question the Arena answers: **which way of trading is actually right more often, and what
 does it cost to run?**
@@ -18,6 +18,12 @@ does it cost to run?**
 | **Iron Legion** | Disciplined specialists | A research agent hunts ideas and a devil's advocate attacks each one. Five discipline traders (fundamental, momentum, Ichimoku cloud, money flow, news) vote blind, debate, and vote again in the **War Room**. Approval needs a ±0.30 score, 3+ traders, and 2+ independent kinds of evidence. | Heavy: about 14 Claude calls per idea, plus an Agent SDK research agent |
 | **The Ascendant** | Hyper-advanced quant models | Four seers are pure math: an *analog forecaster* (finds the past 20-day patterns most like today and asks what happened next), a *regime augur* (market trend and breadth × beta), a *volatility prism* (risk-adjusted momentum), and a *cross-sectional ranker*. The Exarch pools their probabilities in log-odds space in the **Conclave** and trades at 55%+ with 3 of 4 seers aligned. | Light: Claude only narrates the verdict (1 call per idea) |
 | **The Brood** | Hive mind | 24 single-signal drones (RSI bounce, 20-day breakout, money inflow, gap up…) vote independently, with no debate. The Hive Queen acts when at least 68% of at least 8 active drones agree, in the **Hive Mind**. Drones that keep being wrong lose weight: the swarm evolves. | Light: 1 Claude call per idea |
+| **The Syndicate** | Setup hunters | Five hunters each grade one published swing setup A/B/C: *Momentum Burst*, *Volatility Contraction Pattern*, *Gap & Drift* (episodic pivot / post-earnings drift), *Exhaustion Hammer* and *Growth Leader* (CANSLIM-lite). The Lookout reads the market from SPY distribution days, follow-through days and S&P 500 breadth. The Fixer pays a bounty on the **Bounty Board** when the setup points (A=3, B=2, C=1, times each hunter's track-record weight) reach 3 in a confirmed uptrend, 4 under pressure, 6 in a correction. A drawdown circuit breaker and a no-revenge-trading rule can stop new entries. Stocks only. | Light: 1 Claude call per idea |
+
+The Syndicate's rules are ported from [tradermonty/claude-trading-skills](https://github.com/tradermonty/claude-trading-skills)
+(MIT License) and run on the same Yahoo data as everyone else. Where our free data can't support a rule exactly,
+the substitute is noted in `factions/syndicate.py`. For example, without past earnings dates a 3%+ gap on 1.5×
+volume stands in for the earnings day, and CANSLIM's A and I letters are left out.
 
 **Neutral Quartermaster.** Ingrid sizes every faction's trades with the same rules, all enforced in code: 1%
 of equity at risk with a 2×ATR stop, a 10% cap per position (50% for currency pairs), 8 positions max, at most
@@ -108,7 +114,7 @@ python -m prop_desk.server               # open http://localhost:8000
 |---|---|
 | R | Run a round |
 | M | Battlefield |
-| 1 / 2 / 3 | War Room / Conclave / Hive Mind |
+| 1 / 2 / 3 / 4 | War Room / Conclave / Hive Mind / Bounty Board |
 | S | Voices and sound |
 | F | Pick tickers |
 | A | Auto camera |
@@ -148,8 +154,9 @@ Every Claude call goes through one of two backends. The app picks one automatica
 
 | Variable | Default | |
 |---|---|---|
-| `PROP_DESK_FACTIONS` | `legion,ascendant,brood` | which factions compete |
+| `PROP_DESK_FACTIONS` | `legion,ascendant,brood,syndicate` | which factions compete |
 | `PROP_DESK_MODEL` / `PROP_DESK_EFFORT` | `claude-opus-5-5` / `medium` | `claude-sonnet-5-5` is about half the cost |
+| `PROP_DESK_MODEL_LEGION` (or `_ASCENDANT`, `_BROOD`, `_SYNDICATE`) | – | one faction's own model, e.g. Iron Legion on `claude-sonnet-5-5` |
 | `PROP_DESK_WATCHLIST` | 12 large caps | the core stocks |
 | `PROP_DESK_ASSETS` | `stocks,lively,crypto,forex,options` | what the factions may trade |
 | `PROP_DESK_LIVELY_COUNT` / `_LIVELY_MIN_PRICE` / `_LIVELY_MIN_DOLLAR_VOLUME` | `8` / `2` / `5000000` | today's lively stocks and their filters |
@@ -178,9 +185,11 @@ Every Claude call goes through one of two backends. The app picks one automatica
 | Iron Legion | 13 Claude calls | $0.30–$0.60 |
 | Ascendant | 1 call | under 5¢ |
 | Brood | 1 call | under 5¢ |
+| Syndicate | 1 call | under 5¢ |
 
-A full round with every faction weighing 3 ideas costs roughly $1–2. Live costs per faction are shown on the
-standings cards.
+A full round with every faction weighing 3 ideas costs roughly $1–2, almost all of it Iron Legion. Running only
+the Legion on Sonnet (`PROP_DESK_MODEL_LEGION=claude-sonnet-5-5`) roughly halves that, while the light factions
+stay on Opus. Live costs per faction are shown on the standings cards.
 
 ## Code map
 
@@ -191,6 +200,7 @@ prop_desk/
   factions/legion.py   Iron Legion (War Room council, Agent SDK research, devil's advocate)
   factions/ascendant.py  the Ascendant's four quant models and log-odds pooling
   factions/brood.py    the Brood's 24 drones and the Queen
+  factions/syndicate.py  the Syndicate's five setup screeners, market posture and circuit breaker
   agents/              personas, Claude wrapper, Agent SDK research agent, output schemas
   indicators.py        RSI, MACD, ATR, Ichimoku, MFI, CMF, OBV, relative strength
   universe.py          what's tradable today: core + lively stocks, crypto, currencies
@@ -209,9 +219,10 @@ prop_desk/
 
 ## What's tested, and what isn't
 
-- **Tested:** 38 automated tests cover indicators, consensus, every risk rule, Kalshi fees and settlement,
+- **Tested:** 48 automated tests cover each Syndicate setup, distribution and follow-through days, the market
+  posture and the circuit breaker, plus indicators, consensus, every risk rule, Kalshi fees and settlement,
   scoring and weights, crypto and currency sizing, option pricing, caps, spreads and settlement, risk-adjusted
-  season scoring, all three factions end to end, Claude-mode paths using a stand-in model, and recovery
+  season scoring, all four factions end to end, Claude-mode paths using a stand-in model, and recovery
   when Claude or the research agent fails. Full rounds were also run in a headless browser at desktop and
   phone widths.
 - **Not yet tested:**

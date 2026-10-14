@@ -1,4 +1,4 @@
-// The battlefield: three bases, mineral fields (stocks, lively stocks, crypto, currencies),
+// The battlefield: four bases, mineral fields (stocks, lively stocks, crypto, currencies),
 // gas vents (prediction markets) and the units.
 import { unitSprite, shade } from "./sprites.js";
 
@@ -16,10 +16,14 @@ export const BASES = {
   legion: { x: 180, y: 585, label: "IRON LEGION · COMMAND POST" },
   ascendant: { x: 600, y: 112, label: "THE ASCENDANT · SPIRE" },
   brood: { x: 1020, y: 585, label: "THE BROOD · HIVE" },
+  syndicate: { x: 215, y: 100, label: "THE SYNDICATE · OUTPOST" },
   neutral: { x: 600, y: 668, label: "QUARTERMASTER" },
 };
+export const FCOLORS = { legion: "#60a5fa", ascendant: "#fbbf24", brood: "#d946ef", syndicate: "#f97316", neutral: "#facc15" };
 const RING = { x: 600, y: 395, rx: 300, ry: 160 };
-const GAS_SPOTS = [[330, 105], [870, 105], [80, 92], [1120, 92], [350, 664], [850, 664]];
+const GAS_SPOTS = [[870, 105], [1120, 92], [350, 664], [850, 664], [440, 178], [760, 178]];
+// Labels sit under a base, except for the two bases along the top edge.
+const LABEL_DY = { ascendant: -84, syndicate: -78 };
 
 export class BattleMap {
   constructor(svg, agents) {
@@ -63,13 +67,15 @@ export class BattleMap {
       <linearGradient id="beacon" x1="0" x2="1"><stop offset="0" stop-color="#134e4a"/><stop offset=".5" stop-color="#5eead4"/><stop offset="1" stop-color="#134e4a"/></linearGradient>
       <linearGradient id="spire" x1="0" x2="1"><stop offset="0" stop-color="#fef3c7"/><stop offset=".5" stop-color="#fbbf24"/><stop offset="1" stop-color="#92400e"/></linearGradient>
       <linearGradient id="steel" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#94a3b8"/><stop offset="1" stop-color="#334155"/></linearGradient>
+      <radialGradient id="dust"><stop offset="0" stop-color="#4a3424"/><stop offset=".8" stop-color="#33241a"/><stop offset="1" stop-color="#241912"/></radialGradient>
+      <linearGradient id="timber" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#7c4a26"/><stop offset="1" stop-color="#3f2412"/></linearGradient>
     </defs>`;
     el("rect", { width: W, height: H, fill: "#0e0c15" }, s);
     el("rect", { width: W, height: H, filter: "url(#terrain)" }, s);
     el("rect", { width: W, height: H, filter: "url(#grit)" }, s);
     // Worn dirt roads from each base to the middle.
     const roads = el("g", { stroke: "#3a3346", "stroke-width": 46, "stroke-linecap": "round", opacity: .55, fill: "none" }, s);
-    for (const b of [BASES.legion, BASES.ascendant, BASES.brood]) el("path", { d: `M${b.x} ${b.y} Q ${(b.x + RING.x) / 2} ${(b.y + RING.y) / 2 + 30} ${RING.x} ${RING.y}` }, roads);
+    for (const b of [BASES.legion, BASES.ascendant, BASES.brood, BASES.syndicate]) el("path", { d: `M${b.x} ${b.y} Q ${(b.x + RING.x) / 2} ${(b.y + RING.y) / 2 + 30} ${RING.x} ${RING.y}` }, roads);
     // Rocks
     const r = rnd(11), rocks = el("g", {}, s);
     for (let i = 0; i < 46; i++) {
@@ -77,14 +83,14 @@ export class BattleMap {
       if (Math.hypot(x - RING.x, (y - RING.y) * 1.6) < 360 || (y > 140 && y < 470 && (x < 250 || x > 950))) continue;
       el("ellipse", { cx: x, cy: y, rx: w, ry: w * .55, fill: "#2a2636", stroke: "#0d0b14", "stroke-width": 1.2 }, rocks);
     }
-    this.drawLegion(); this.drawAscendant(); this.drawBrood(); this.drawQuartermaster();
+    this.drawLegion(); this.drawAscendant(); this.drawBrood(); this.drawSyndicate(); this.drawQuartermaster();
     this.resourceLayer = el("g", {}, s);
     this.claimLayer = el("g", {}, s);
     this.unitLayer = el("g", {}, s);
     this.fxLayer = el("g", {}, s);
     this.labelLayer = el("g", {}, s);
     for (const [k, b] of Object.entries(BASES)) {
-      const t = el("text", { x: b.x, y: b.y + (k === "ascendant" ? -84 : 96), "text-anchor": "middle", class: "base-label " + k }, this.labelLayer);
+      const t = el("text", { x: b.x, y: b.y + (LABEL_DY[k] ?? 96), "text-anchor": "middle", class: "base-label " + k }, this.labelLayer);
       t.textContent = b.label;
     }
   }
@@ -141,6 +147,33 @@ export class BattleMap {
     el("ellipse", { cx: x, cy: y - 2, rx: 18, ry: 12, fill: "#f0abfc", opacity: .55, class: "pulse" }, g);
   }
 
+  drawSyndicate() {
+    const { x, y } = BASES.syndicate, g = el("g", { class: "base syndicate" }, this.svg);
+    el("ellipse", { cx: x, cy: y + 8, rx: 150, ry: 64, fill: "url(#dust)", stroke: "#9a3412", "stroke-width": 2 }, g);
+    // Palisade along the back
+    for (let i = 0; i < 15; i++) {
+      const a = Math.PI + (i / 14) * Math.PI, px = x + Math.cos(a) * 128, py = y + 6 + Math.sin(a) * 50;
+      el("path", { d: `M${px - 4} ${py} v-16 l4 -6 l4 6 v16 z`, fill: "url(#timber)", stroke: "#1c1008", "stroke-width": 1 }, g);
+    }
+    // The hideout: timber hall with lit windows
+    el("path", { d: `M${x - 50} ${y + 14} v-34 l50 -22 l50 22 v34 z`, fill: "url(#timber)", stroke: "#1c1008", "stroke-width": 2 }, g);
+    el("path", { d: `M${x - 58} ${y - 18} l58 -26 l58 26`, fill: "none", stroke: "#9a3412", "stroke-width": 5, "stroke-linecap": "round" }, g);
+    el("rect", { x: x - 9, y: y - 6, width: 18, height: 20, fill: "#1c1008" }, g);
+    for (const dx of [-34, 22]) el("rect", { x: x + dx, y: y - 12, width: 12, height: 9, fill: "#fb923c", class: "blink", style: `animation-delay:${dx < 0 ? 0 : .8}s` }, g);
+    // Bounty board with posters
+    el("rect", { x: x - 112, y: y - 16, width: 40, height: 28, fill: "#5b3a1e", stroke: "#1c1008" }, g);
+    for (let i = 0; i < 4; i++) el("rect", { x: x - 108 + (i % 2) * 18, y: y - 13 + Math.floor(i / 2) * 13, width: 14, height: 10, fill: "#e7d3a8", transform: `rotate(${(i % 3) - 1} ${x - 100} ${y})` }, g);
+    el("line", { x1: x - 104, y1: y + 12, x2: x - 104, y2: y + 24, stroke: "#3f2412", "stroke-width": 3 }, g);
+    el("line", { x1: x - 80, y1: y + 12, x2: x - 80, y2: y + 24, stroke: "#3f2412", "stroke-width": 3 }, g);
+    // Watchtower: the Lookout reads the whole market from up here
+    const tx = x + 92;
+    for (const dx of [-12, 12]) el("line", { x1: tx + dx, y1: y + 22, x2: tx + dx * .5, y2: y - 34, stroke: "#5b3a1e", "stroke-width": 4 }, g);
+    el("line", { x1: tx - 10, y1: y + 2, x2: tx + 10, y2: y - 18, stroke: "#5b3a1e", "stroke-width": 2 }, g);
+    el("rect", { x: tx - 16, y: y - 44, width: 32, height: 12, fill: "url(#timber)", stroke: "#1c1008" }, g);
+    el("path", { d: `M${tx - 18} ${y - 44} l18 -12 l18 12 z`, fill: "#9a3412" }, g);
+    el("circle", { cx: tx, cy: y - 38, r: 3.5, fill: "#fde68a", filter: "url(#glow)", class: "blink" }, g);
+  }
+
   drawQuartermaster() {
     const { x, y } = BASES.neutral, g = el("g", { class: "base neutral" }, this.svg);
     el("rect", { x: x - 36, y: y - 26, width: 72, height: 34, rx: 6, fill: "#3f3f46", stroke: "#facc15", "stroke-width": 2 }, g);
@@ -161,7 +194,7 @@ export class BattleMap {
     });
     ring(lanes.stock, RING.rx, RING.ry, 0);
     ring(lanes.lively, 172, 84, Math.PI / Math.max(lanes.lively.length, 1));
-    lanes.crypto.forEach((m, i) => this.drawNode(m, i % 2 ? 196 : 92, 178 + i * 60));
+    lanes.crypto.forEach((m, i) => this.drawNode(m, i % 2 ? 196 : 92, 200 + i * 58));
     lanes.forex.forEach((m, i) => this.drawNode(m, i % 2 ? 1004 : 1108, 196 + i * 66));
     this.drawClaims();
   }
@@ -228,7 +261,6 @@ export class BattleMap {
 
   drawClaims() {
     this.claimLayer.innerHTML = "";
-    const colors = { legion: "#60a5fa", ascendant: "#fbbf24", brood: "#d946ef" };
     const per = {};
     for (const [f, syms] of Object.entries(this.claims)) for (const s of syms) (per[s] ||= []).push(f);
     for (const [sym, fs] of Object.entries(per)) {
@@ -238,7 +270,7 @@ export class BattleMap {
         const x = m.x - 26 + i * 14, y = m.y - 36;
         const g = el("g", { class: "flag" }, this.claimLayer);
         el("line", { x1: x, y1: y, x2: x, y2: y + 26, stroke: "#e5e7eb", "stroke-width": 1.6 }, g);
-        el("path", { d: `M${x} ${y} l14 4 l-14 5 z`, fill: colors[f] }, g);
+        el("path", { d: `M${x} ${y} l14 4 l-14 5 z`, fill: FCOLORS[f] }, g);
       });
     }
   }
@@ -255,7 +287,7 @@ export class BattleMap {
   harvest(faction, sym) {
     const m = this.spot(sym), b = BASES[faction];
     if (!m || !b) return;
-    const color = { legion: "#93c5fd", ascendant: "#fde68a", brood: "#f0abfc" }[faction];
+    const color = { legion: "#93c5fd", ascendant: "#fde68a", brood: "#f0abfc", syndicate: "#fdba74" }[faction];
     const beam = el("line", { x1: b.x, y1: b.y - 20, x2: m.x, y2: m.y - 10, stroke: color, "stroke-width": 4, class: "beam", filter: "url(#glow)" }, this.fxLayer);
     setTimeout(() => beam.remove(), 1600);
     for (let i = 0; i < 8; i++) {
@@ -278,6 +310,11 @@ export class BattleMap {
     else if (a.style === "queen") { hx += 0; hy += 52; }
     else if (a.faction === "ascendant") { const ang = (i % 5) / 5 * Math.PI * 2 + .3; hx += Math.cos(ang) * 70; hy += 22 + Math.sin(ang) * 30; }
     else if (a.faction === "legion") { const k = i % 10; hx += -70 + (k % 5) * 34; hy += 18 + Math.floor(k / 5) * 26; }
+    else if (a.faction === "syndicate") {
+      if (a.kind === "researcher") { hx += 92; hy += 26; }  // the Lookout, at the foot of the watchtower
+      else if (a.kind === "chair") { hx += 0; hy += 40; }
+      else { const k = i % 5; hx += -78 + k * 30; hy += 50 + (k % 2) * 10; }
+    }
     else { hx += 52; hy += 8; }
     const g = el("g", { class: `unit u-${a.style}`, "data-id": a.id }, this.unitLayer);
     const sc = { human: .5, seer: .55, drone: .62, queen: .75 }[a.style] || .5;
@@ -391,7 +428,7 @@ export function drawMinimap(svg, map) {
   const lc = { stock: "#38bdf8", lively: "#facc15", crypto: "#a855f7", forex: "#2dd4bf" };
   const res = Object.values(map.minerals).map((m) => `<rect x="${m.x - 14}" y="${m.y - 10}" width="28" height="20" fill="${lc[m.lane] || lc.stock}"/>`).join("")
     + Object.values(map.gas).map((m) => `<circle cx="${m.x}" cy="${m.y}" r="14" fill="#22c55e"/>`).join("");
-  const bases = Object.entries(BASES).map(([k, b]) => `<circle cx="${b.x}" cy="${b.y}" r="${k === "neutral" ? 22 : 60}" fill="none" stroke="${{ legion: "#60a5fa", ascendant: "#fbbf24", brood: "#d946ef", neutral: "#facc15" }[k]}" stroke-width="10"/>`).join("");
+  const bases = Object.entries(BASES).map(([k, b]) => `<circle cx="${b.x}" cy="${b.y}" r="${k === "neutral" ? 22 : 60}" fill="none" stroke="${FCOLORS[k]}" stroke-width="10"/>`).join("");
   svg.innerHTML = `<rect width="${W}" height="${H}" fill="#0b0a12"/>${bases}${res}${dots}`;
 }
 

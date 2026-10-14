@@ -38,6 +38,18 @@ const FACTION_LINES = {
     retreat: ["Abandon the field!", "Retreat to the hive."],
     win: ["The swarm is victorious.", "We are many. We are right."],
   },
+  syndicate: {
+    turn: ["The Syndicate's open for business.", "Boards are up. Who's got a setup?", "Saddle up. We hunt setups, not stories."],
+    research: ["Checking the board.", "Riding out to the fields.", "Let's see who's wanted today."],
+    yes: ["That's a textbook setup.", "Got one. Clean pattern."],
+    no: ["Pattern's broken.", "That one's no good to us."],
+    pass: ["No setup, no trade.", "Nothing on my board."],
+    approve: ["Bounty's posted. Go get it.", "The setup pays. We ride."],
+    reject: ["No bounty on that one.", "Not enough setups. We wait."],
+    trade: ["Bounty claimed.", "Stop's set. Let it work."],
+    retreat: ["Setup's busted. Cut it.", "We're out. Rules are rules."],
+    win: ["The Syndicate always collects.", "Setups beat stories."],
+  },
   neutral: {
     approve: ["Risk approved. Trade safe.", "Within limits. Cleared."],
     veto: ["Veto. Too hot.", "Not on my watch.", "Limits say no."],
@@ -58,6 +70,13 @@ const UNIT_LINES = {
   chair: { approve: ["Council approves. Execute."], reject: ["Motion denied."] },
   vexa: { any: ["Many signals. One will."] },
   thalor: { any: ["The Convergence speaks."] },
+  fixer: { approve: ["Pay the bounty."], reject: ["No bounty."] },
+  lookout: { research: ["Eyes on the whole market.", "Counting distribution days."] },
+  burst: { yes: ["She's bursting. Four percent and climbing."] },
+  vcp: { yes: ["Tight as a drum. Ready to break."], pass: ["Too loose. No coil."] },
+  pivot: { yes: ["Gap's holding. Drift's on."] },
+  hammer: { yes: ["Sellers are exhausted."] },
+  growth: { yes: ["A real leader. The numbers back it."] },
   risk: {},
 };
 
@@ -65,6 +84,7 @@ const VOICE = {
   legion: { pitch: 0.85, rate: 1.08 },
   ascendant: { pitch: 0.45, rate: 0.82 },
   brood: { pitch: 1.75, rate: 1.22 },
+  syndicate: { pitch: 0.7, rate: 0.95 },
   neutral: { pitch: 1.1, rate: 1.0 },
 };
 

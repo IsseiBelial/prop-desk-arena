@@ -74,8 +74,8 @@ def main() -> int:
     import os
     line("OK" if os.path.exists(ENV_FILE) else "WARN", f"Settings file: {ENV_FILE}",
          "" if os.path.exists(ENV_FILE) else "Copy prop_desk/arena.env.example to prop_desk/arena.env and edit it")
-    print(f"       starting cash ${settings.starting_cash:g} per faction, {settings.season_days}-day seasons, "
-          f"model {settings.model}")
+    print(f"       starting cash ${settings.starting_cash:g} per faction, {settings.season_days}-day seasons")
+    print("       factions: " + ", ".join(f"{f} ({settings.model_for(f)})" for f in settings.factions))
     if settings.schedule_et:
         try:
             times = [tuple(map(int, t.split(":"))) for t in settings.schedule_et]
@@ -123,6 +123,15 @@ def main() -> int:
         except Exception as e:
             line("WARN", f"Couldn't check the extra instruments ({type(e).__name__})",
                  "Crypto, currencies and options may fall back to simulated prices")
+
+    if "syndicate" in settings.factions:
+        try:
+            from .factions.syndicate import fetch_breadth
+            b = fetch_breadth()
+            line("OK", f"S&P 500 breadth (for the Syndicate): {b['raw']:.0%} above the 200-day on {b['date']}")
+        except Exception as e:
+            line("WARN", f"Can't reach the breadth data ({type(e).__name__})",
+                 "The Syndicate's Lookout would read the market from SPY alone. Check access to tradermonty.github.io")
 
     if settings.kalshi_enabled:
         try:
