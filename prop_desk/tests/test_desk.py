@@ -206,16 +206,17 @@ def run(arena, symbols=None):
     return events
 
 
-def test_arena_session_runs_all_four_factions(settings):
+def test_arena_session_runs_all_five_factions(settings):
     a = Arena(settings, None)
     ev = run(a)
     assert not [e for e in ev if e["type"] == "error"]
-    assert [e["faction"] for e in ev if e["type"] == "turn"] == ["legion", "ascendant", "brood", "syndicate"]
+    assert [e["faction"] for e in ev if e["type"] == "turn"] == ["legion", "ascendant", "brood", "syndicate", "kronos"]
     assert any(e["type"] == "model" for e in ev) and any(e["type"] == "swarm_vote" for e in ev)
     assert any(e["type"] == "message" and e["agent"] == "bear" for e in ev)  # devil's advocate spoke
     assert any(e["type"] == "posture" for e in ev)  # the Syndicate's Lookout read the market
+    assert any(e["type"] == "forecast" for e in ev)  # Kronos drew its paths
     standings = [e for e in ev if e["type"] == "standings"][-1]["factions"]
-    assert {r["id"] for r in standings} == {"legion", "ascendant", "brood", "syndicate"}
+    assert {r["id"] for r in standings} == {"legion", "ascendant", "brood", "syndicate", "kronos"}
     for f in a.factions:  # separate books, every idea recorded as a faction call
         assert os.path.exists(os.path.join(settings.data_dir, f.id, "ledger.json"))
         assert f.scorecard.calls and all(f.id in c["votes"] for c in f.scorecard.calls)

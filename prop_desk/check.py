@@ -40,6 +40,38 @@ def extra_checks(settings) -> None:
              "" if n else "Options would be priced with a model instead of live quotes")
 
 
+def kronos_check(settings) -> None:
+    """The Kronos Watch: PyTorch installed, model downloaded, one forecast made."""
+    import time
+
+    from . import forecaster
+    if not forecaster.available():
+        line("WARN", "PyTorch isn't installed, so the Kronos Watch will sit out",
+             "Run: pip install -r prop_desk/requirements-kronos.txt (or remove kronos from PROP_DESK_FACTIONS)")
+        return
+    try:
+        from .market_data import make_provider
+        e = forecaster.make_engine(settings)
+        t = time.time()
+        e.load()
+        loaded = time.time() - t
+        p = make_provider(settings.data_source, settings.benchmark)
+        sym = settings.watchlist[0]
+        t = time.time()
+        fc = e.forecast(sym, p.bars(sym), settings.call_horizon_days)
+        took = time.time() - t
+        device = e.load().device
+        line("OK", f"Kronos: {e.name} on {device} (loaded in {loaded:.0f}s). {sym}: {fc.p_up:.0%} of "
+                   f"{len(fc.closes)} paths end higher in {fc.horizon} days, {took:.1f}s per symbol")
+        if took * 30 > 300:
+            print(f"       a full round (~30 symbols) would take about {took * 30 / 60:.0f} minutes; "
+                  "lower PROP_DESK_KRONOS_SAMPLES to speed it up")
+    except Exception as ex:
+        line("WARN", f"Kronos couldn't run ({type(ex).__name__}: {ex})",
+             "The first run downloads the model from huggingface.co (~115 MB). Check the connection; "
+             "the Kronos Watch sits out until it works")
+
+
 def main() -> int:
     import logging
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)  # its own retry chatter isn't useful here
@@ -132,6 +164,9 @@ def main() -> int:
         except Exception as e:
             line("WARN", f"Can't reach the breadth data ({type(e).__name__})",
                  "The Syndicate's Lookout would read the market from SPY alone. Check access to tradermonty.github.io")
+
+    if "kronos" in settings.factions:
+        kronos_check(settings)
 
     if settings.kalshi_enabled:
         try:

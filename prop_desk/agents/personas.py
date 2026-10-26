@@ -34,7 +34,7 @@ class Persona:
     # two different families, so three price-chart traders can't approve it alone.
     family: str = ""
     look: str = ""  # character accessory drawn in the GUI
-    faction: str = "legion"  # legion | ascendant | brood | syndicate | neutral
+    faction: str = "legion"  # legion | ascendant | brood | syndicate | kronos | neutral
     style: str = "human"  # how the GUI draws them: human | seer | drone | queen
 
     def public(self) -> dict:
@@ -335,7 +335,29 @@ SYNDICATE = [
             faction="syndicate", look="stetson"),
 ]
 
-ALL = LEGION + ASCENDANT + BROOD + SYNDICATE + [RISK]
+# ---------------------------------------------------------------- The Kronos Watch
+# Kronos, a foundation model for candlesticks, draws many possible next weeks for every
+# symbol; three wardens read those paths in code, and Claude (Interpreter Cass) may veto.
+# (Rules live in factions/kronos.py, the model wrapper in forecaster.py.)
+KRONOS = [
+    Persona("ione", "Oracle Ione", "Kronos Path Oracle", "trader", "#bef264", "OI",
+            "Asks Kronos for many possible next weeks and counts how many end higher.",
+            faction="kronos", look="hourglass", family="price"),
+    Persona("sol", "Archivist Sol", "Kronos Ranker", "trader", "#86efac", "AS",
+            "Ranks every symbol by Kronos's expected return and only likes the top of the list, the way the Kronos "
+            "paper traded.", faction="kronos", look="scroll", family="price"),
+    Persona("venn", "Walker Venn", "Trade Walker", "trader", "#d9f99d", "WV",
+            "Walks every Kronos path through the real stop and target. Did the trade pay, or get stopped out?",
+            faction="kronos", look="lantern", family="price"),
+    Persona("cass", "Interpreter Cass", "Claude Interpreter", "trader", "#d97757", "IC",
+            "Reads Kronos's forecast next to the news and earnings dates Kronos can't see. Can veto, never start, a trade.",
+            faction="kronos", look="quill", family="news"),
+    Persona("aurel", "Keeper Aurel", "Keeper of the Clock", "chair", "#a3e635", "KA",
+            "Acts when enough of tomorrow's paths agree, and the Interpreter has no reason to stop it.",
+            faction="kronos", look="clockhat"),
+]
+
+ALL = LEGION + ASCENDANT + BROOD + SYNDICATE + KRONOS + [RISK]
 BY_ID = {p.id: p for p in ALL}
 
 DISCIPLINE_PROMPTS = {

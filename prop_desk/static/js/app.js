@@ -1,7 +1,7 @@
 // Prop Desk Arena client: turns desk events into an RTS battlefield, faction scenes and panels.
 import { BattleMap, BASES, drawMinimap } from "./map.js";
 import { Council, VOTERS } from "./council.js";
-import { BountyBoard, Conclave, HiveMind, HUNTERS } from "./scenes.js";
+import { BountyBoard, Conclave, HiveMind, HUNTERS, Observatory, WARDENS } from "./scenes.js";
 import { candleChart, probabilityBar, raceChart } from "./charts.js";
 import { unitSprite } from "./sprites.js";
 import { Voice } from "./voice.js";
@@ -28,10 +28,10 @@ const SCENE_PHASES = new Set(["bear", "round1", "debate", "vote"]);
 
 const S = {
   agents: {}, factions: [], fmap: {}, standings: [], portfolios: {}, idea: null, votes: { 1: {}, 2: {} },
-  models: {}, swarm: null, setups: {}, posture: null, bounty: null, levels: {}, edge: null, turn: null, view: "map",
+  models: {}, swarm: null, setups: {}, posture: null, bounty: null, forecast: null, kvotes: {}, levels: {}, edge: null, turn: null, view: "map",
   unitTab: "legion", bookTab: "legion", msgCount: 0, replaying: false, focus: null, labSpot: 0, running: false, settings: {}, season: null,
 };
-let battle, council, conclave, hive, den;
+let battle, council, conclave, hive, den, obs;
 const voice = new Voice();
 
 // ------------------------------------------------------------------ setup
@@ -48,8 +48,9 @@ async function init() {
   conclave = new Conclave($("#conclave"), S.agents);
   hive = new HiveMind($("#hive"), S.agents, st.agents.filter((a) => a.style === "drone").map((a) => a.id));
   den = new BountyBoard($("#den"), S.agents);
+  obs = new Observatory($("#observatory"), S.agents, !!S.fmap.kronos?.model);
   // Only show rooms for the factions that are competing (PROP_DESK_FACTIONS).
-  for (const id of ["legion", "ascendant", "brood", "syndicate"]) {
+  for (const id of ["legion", "ascendant", "brood", "syndicate", "kronos"]) {
     if (S.fmap[id]) continue;
     document.querySelectorAll(`[data-view="${id}"], [data-cam="${id}"]`).forEach((b) => b.classList.add("hidden"));
   }
@@ -70,7 +71,7 @@ async function init() {
   renderBook();
   renderRace();
   setRunning(st.running);
-  showPortrait(S.agents.chair, "Iron Legion, reporting for duty.", "Press R to run a session. 1-4 jump to each faction's room.");
+  showPortrait(S.agents.chair, "Iron Legion, reporting for duty.", "Press R to run a session. 1-5 jump to each faction's room.");
   setInterval(() => drawMinimap($("#minimap"), battle), 300);
   connect();
 }
@@ -125,6 +126,8 @@ function handle(e) {
       break;
     case "setup": S.setups[e.agent] = e; den.setup(e); renderIdea(); break;
     case "bounty": S.bounty = e; den.bounty(e); if (S.idea) S.idea.bounty = e; renderIdea(); break;
+    case "forecast": S.forecast = e; obs.forecast(e); renderIdea(); break;
+    case "kvote": S.kvotes[e.agent] = e; obs.vote(e); renderIdea(); break;
     case "candidate": onCandidate(e); break;
     case "status": battle.setStatus(e.agent, e.status); sceneFor(f)?.setStatus(e.agent, e.status); break;
     case "message": addMessage(e); break;
@@ -178,7 +181,7 @@ function handle(e) {
 }
 
 const unitsOf = (f) => Object.values(S.agents).filter((a) => a.faction === f).map((a) => a.id);
-const sceneFor = (f) => ({ legion: council, ascendant: conclave, brood: hive, syndicate: den })[f];
+const sceneFor = (f) => ({ legion: council, ascendant: conclave, brood: hive, syndicate: den, kronos: obs })[f];
 
 function onTurn(e) {
   S.turn = e.faction;
@@ -226,7 +229,7 @@ function onWarp(e) {
 }
 
 function onCandidate(e) {
-  S.idea = e; S.votes = { 1: {}, 2: {} }; S.models = {}; S.swarm = null; S.setups = {}; S.bounty = null; S.levels = {}; S.edge = null;
+  S.idea = e; S.votes = { 1: {}, 2: {} }; S.models = {}; S.swarm = null; S.setups = {}; S.bounty = null; S.forecast = null; S.kvotes = {}; S.levels = {}; S.edge = null;
   battle.select(e.symbol);
   sceneFor(e.faction)?.setSubject(e);
   if (e.faction === "ascendant") ["vael", "kyth", "oriel", "lumen"].forEach((id, i) => battle.toField(id, e.symbol, i, 4));
@@ -248,7 +251,7 @@ function onVote(e) {
 function camera(v, manual = false) {
   if (!manual && !$("#autocam").checked) return;
   S.view = v;
-  for (const k of ["map", "legion", "ascendant", "brood", "syndicate"]) $("#view-" + k).classList.toggle("hidden", k !== v);
+  for (const k of ["map", "legion", "ascendant", "brood", "syndicate", "kronos"]) $("#view-" + k).classList.toggle("hidden", k !== v);
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === v));
   clearBubble();
 }
@@ -520,6 +523,17 @@ function renderIdea() {
     body = (p ? `<div class="edge ${p.state === "green" ? "pos" : "neg"}">Market posture: ${esc(p.label)} · ${esc(p.detail)}</div>` : "") +
       (b ? `<div class="edge ${b.ok ? "pos" : "neg"}">${b.points.toFixed(1)} setup points (needs ${b.needed > 90 ? "a market uptrend" : b.needed}) · ${esc(b.reason)}</div>` : "") +
       `<table class="votes"><thead><tr><th>Hunter</th><th>Grade</th><th>Setup</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } else if (e.faction === "kronos" && !contract) {
+    const fc = S.forecast;
+    const rows = WARDENS.map((id) => {
+      const a = S.agents[id], v = S.kvotes[id];
+      const tag = v ? (id === "cass" ? `<span class="tag ${v.verdict === "VETO" ? "SHORT" : "LONG"}">${esc(v.verdict)}</span>` : `<span class="tag ${v.stance}">${v.stance}</span>`) : "…";
+      return `<tr><td class="n"><b style="color:${a.color}">${esc(a.name.split(" ")[1] || a.name)}</b> <span class="muted small">${esc(a.role)}</span></td>
+        <td>${tag}</td><td class="n small">${v ? esc(v.detail) : id !== "cass" ? "" : fac.model ? "only asked when Kronos wants to trade" : "off: Claude isn't connected"}</td></tr>`;
+    }).join("");
+    body = (fc ? `<div class="edge ${fc.p_up >= 0.5 ? "pos" : "neg"}">${esc(fc.model)}: ${Math.round(fc.p_up * 100)}% of ${fc.paths.length} paths end higher in ${fc.horizon} days ·
+        average ${sgn(fc.expected_pct)}% · 10th-90th percentile ${sgn(fc.p10_pct)}% to ${sgn(fc.p90_pct)}%</div>` : "") +
+      `<table class="votes"><thead><tr><th>Warden</th><th>Call</th><th>Reading</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
   $("#idea").innerHTML = head + chart + body;
 }

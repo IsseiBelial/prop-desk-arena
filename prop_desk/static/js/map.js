@@ -1,4 +1,4 @@
-// The battlefield: four bases, mineral fields (stocks, lively stocks, crypto, currencies),
+// The battlefield: five bases, mineral fields (stocks, lively stocks, crypto, currencies),
 // gas vents (prediction markets) and the units.
 import { unitSprite, shade } from "./sprites.js";
 
@@ -17,13 +17,14 @@ export const BASES = {
   ascendant: { x: 600, y: 112, label: "THE ASCENDANT · SPIRE" },
   brood: { x: 1020, y: 585, label: "THE BROOD · HIVE" },
   syndicate: { x: 215, y: 100, label: "THE SYNDICATE · OUTPOST" },
+  kronos: { x: 985, y: 100, label: "THE KRONOS WATCH · OBSERVATORY" },
   neutral: { x: 600, y: 668, label: "QUARTERMASTER" },
 };
-export const FCOLORS = { legion: "#60a5fa", ascendant: "#fbbf24", brood: "#d946ef", syndicate: "#f97316", neutral: "#facc15" };
+export const FCOLORS = { legion: "#60a5fa", ascendant: "#fbbf24", brood: "#d946ef", syndicate: "#f97316", kronos: "#a3e635", neutral: "#facc15" };
 const RING = { x: 600, y: 395, rx: 300, ry: 160 };
-const GAS_SPOTS = [[870, 105], [1120, 92], [350, 664], [850, 664], [440, 178], [760, 178]];
-// Labels sit under a base, except for the two bases along the top edge.
-const LABEL_DY = { ascendant: -84, syndicate: -78 };
+const GAS_SPOTS = [[350, 664], [850, 664], [440, 178], [760, 178], [330, 250], [870, 250]];
+// Labels sit under a base, except for the bases along the top edge.
+const LABEL_DY = { ascendant: -84, syndicate: -78, kronos: -78 };
 
 export class BattleMap {
   constructor(svg, agents) {
@@ -75,7 +76,7 @@ export class BattleMap {
     el("rect", { width: W, height: H, filter: "url(#grit)" }, s);
     // Worn dirt roads from each base to the middle.
     const roads = el("g", { stroke: "#3a3346", "stroke-width": 46, "stroke-linecap": "round", opacity: .55, fill: "none" }, s);
-    for (const b of [BASES.legion, BASES.ascendant, BASES.brood, BASES.syndicate]) el("path", { d: `M${b.x} ${b.y} Q ${(b.x + RING.x) / 2} ${(b.y + RING.y) / 2 + 30} ${RING.x} ${RING.y}` }, roads);
+    for (const b of [BASES.legion, BASES.ascendant, BASES.brood, BASES.syndicate, BASES.kronos]) el("path", { d: `M${b.x} ${b.y} Q ${(b.x + RING.x) / 2} ${(b.y + RING.y) / 2 + 30} ${RING.x} ${RING.y}` }, roads);
     // Rocks
     const r = rnd(11), rocks = el("g", {}, s);
     for (let i = 0; i < 46; i++) {
@@ -83,7 +84,7 @@ export class BattleMap {
       if (Math.hypot(x - RING.x, (y - RING.y) * 1.6) < 360 || (y > 140 && y < 470 && (x < 250 || x > 950))) continue;
       el("ellipse", { cx: x, cy: y, rx: w, ry: w * .55, fill: "#2a2636", stroke: "#0d0b14", "stroke-width": 1.2 }, rocks);
     }
-    this.drawLegion(); this.drawAscendant(); this.drawBrood(); this.drawSyndicate(); this.drawQuartermaster();
+    this.drawLegion(); this.drawAscendant(); this.drawBrood(); this.drawSyndicate(); this.drawKronos(); this.drawQuartermaster();
     this.resourceLayer = el("g", {}, s);
     this.claimLayer = el("g", {}, s);
     this.unitLayer = el("g", {}, s);
@@ -172,6 +173,37 @@ export class BattleMap {
     el("rect", { x: tx - 16, y: y - 44, width: 32, height: 12, fill: "url(#timber)", stroke: "#1c1008" }, g);
     el("path", { d: `M${tx - 18} ${y - 44} l18 -12 l18 12 z`, fill: "#9a3412" }, g);
     el("circle", { cx: tx, cy: y - 38, r: 3.5, fill: "#fde68a", filter: "url(#glow)", class: "blink" }, g);
+  }
+
+  drawKronos() {
+    const { x, y } = BASES.kronos, g = el("g", { class: "base kronos" }, this.svg);
+    el("ellipse", { cx: x, cy: y + 8, rx: 140, ry: 60, fill: "url(#plateau)", stroke: "#4d7c0f", "stroke-width": 2 }, g);
+    // Dial rings on the ground: the platform is a giant clock face
+    el("ellipse", { cx: x, cy: y + 8, rx: 112, ry: 46, fill: "none", stroke: "#a3e635", "stroke-opacity": .35, "stroke-dasharray": "2 10" }, g);
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2;
+      el("line", { x1: x + Math.cos(a) * 100, y1: y + 8 + Math.sin(a) * 41, x2: x + Math.cos(a) * 112, y2: y + 8 + Math.sin(a) * 46, stroke: "#bef264", "stroke-width": i % 3 ? 1.5 : 3, opacity: .7 }, g);
+    }
+    // The observatory dome, its slit open, and the telescope reaching for tomorrow
+    el("rect", { x: x - 40, y: y - 14, width: 80, height: 28, fill: "url(#steel)", stroke: "#1e293b", "stroke-width": 2 }, g);
+    el("path", { d: `M${x - 44} ${y - 14} a44 40 0 0 1 88 0 z`, fill: "#334155", stroke: "#a3e635", "stroke-width": 2 }, g);
+    el("path", { d: `M${x - 6} ${y - 54} l12 0 l3 40 l-18 0 z`, fill: "#0f172a" }, g);
+    el("line", { x1: x, y1: y - 26, x2: x + 26, y2: y - 64, stroke: "#cbd5e1", "stroke-width": 7, "stroke-linecap": "round" }, g);
+    el("circle", { cx: x + 27, cy: y - 66, r: 4, fill: "#d9f99d", filter: "url(#glow)", class: "blink" }, g);
+    el("rect", { x: x - 8, y: y - 2, width: 16, height: 16, fill: "#0f172a" }, g);
+    // Clock tower with turning hands
+    const cx = x - 92, cy = y - 22;
+    el("rect", { x: cx - 13, y: cy - 6, width: 26, height: 48, fill: "url(#steel)", stroke: "#1e293b" }, g);
+    el("path", { d: `M${cx - 16} ${cy - 6} l16 -14 l16 14 z`, fill: "#4d7c0f" }, g);
+    el("circle", { cx, cy: cy + 8, r: 10, fill: "#f7fee7", stroke: "#365314", "stroke-width": 2 }, g);
+    const hands = el("g", {}, g);
+    el("line", { x1: cx, y1: cy + 8, x2: cx, y2: cy + 1, stroke: "#1a2e05", "stroke-width": 1.8, "stroke-linecap": "round" }, hands);
+    el("line", { x1: cx, y1: cy + 8, x2: cx + 5, y2: cy + 8, stroke: "#1a2e05", "stroke-width": 1.4, "stroke-linecap": "round" }, hands);
+    el("animateTransform", { attributeName: "transform", type: "rotate", from: `0 ${cx} ${cy + 8}`, to: `360 ${cx} ${cy + 8}`, dur: "12s", repeatCount: "indefinite" }, hands);
+    // Hourglass beacon
+    const hx = x + 96;
+    el("path", { d: `M${hx - 9} ${y - 30} h18 l-9 14 l9 14 h-18 l9 -14 z`, fill: "#bef264", "fill-opacity": .25, stroke: "#a3e635", "stroke-width": 1.6 }, g);
+    el("path", { d: `M${hx - 4} ${y - 4} h8 l-4 -5 z`, fill: "#d9f99d", class: "pulse" }, g);
   }
 
   drawQuartermaster() {
@@ -287,7 +319,7 @@ export class BattleMap {
   harvest(faction, sym) {
     const m = this.spot(sym), b = BASES[faction];
     if (!m || !b) return;
-    const color = { legion: "#93c5fd", ascendant: "#fde68a", brood: "#f0abfc", syndicate: "#fdba74" }[faction];
+    const color = { legion: "#93c5fd", ascendant: "#fde68a", brood: "#f0abfc", syndicate: "#fdba74", kronos: "#d9f99d" }[faction];
     const beam = el("line", { x1: b.x, y1: b.y - 20, x2: m.x, y2: m.y - 10, stroke: color, "stroke-width": 4, class: "beam", filter: "url(#glow)" }, this.fxLayer);
     setTimeout(() => beam.remove(), 1600);
     for (let i = 0; i < 8; i++) {
@@ -314,6 +346,10 @@ export class BattleMap {
       if (a.kind === "researcher") { hx += 92; hy += 26; }  // the Lookout, at the foot of the watchtower
       else if (a.kind === "chair") { hx += 0; hy += 40; }
       else { const k = i % 5; hx += -78 + k * 30; hy += 50 + (k % 2) * 10; }
+    }
+    else if (a.faction === "kronos") {
+      if (a.kind === "chair") { hx += 0; hy += 30; }
+      else { const k = i % 4; hx += -66 + k * 44; hy += 52 + (k % 2) * 8; }
     }
     else { hx += 52; hy += 8; }
     const g = el("g", { class: `unit u-${a.style}`, "data-id": a.id }, this.unitLayer);

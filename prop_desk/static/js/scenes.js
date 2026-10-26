@@ -1,4 +1,5 @@
-// Decision scenes for the Ascendant (the Conclave), the Brood (the Hive Mind) and the Syndicate (the Bounty Board).
+// Decision scenes for the Ascendant (the Conclave), the Brood (the Hive Mind), the Syndicate (the Bounty Board)
+// and the Kronos Watch (the Observatory).
 import { seer, drone, queen, sprite } from "./sprites.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -352,5 +353,131 @@ export class BountyBoard extends SceneBase {
     const bx = 240 * e.needed / max;
     this.mBar.setAttribute("x1", bx); this.mBar.setAttribute("x2", bx);
     this.mText.textContent = e.needed > 90 ? "NO NEW LONGS IN A CORRECTION" : `${e.points.toFixed(1)} SETUP POINTS · ${e.needed} NEEDED`;
+  }
+}
+
+// ---------------------------------------------------------------- The Observatory
+// Kronos draws many possible next weeks; the chart fans them out from today's close.
+// Each warden holds up its own reading of the fan; the Interpreter (Claude) may veto.
+export const WARDENS = ["ione", "sol", "venn", "cass"];
+const WARDEN_X = { ione: 300, sol: 500, venn: 700, cass: 880 };
+const STANCE_COLOR = { LONG: "#22c55e", SHORT: "#ef4444", PASS: "#94a3b8" };
+const CH = { x0: 110, xt: 570, x1: 864, y0: 92, y1: 300 };
+
+export class Observatory extends SceneBase {
+  constructor(svg, agents, claude = true) {
+    super();
+    this.svg = svg;
+    this.claude = claude;  // without Claude, the Interpreter sits out and Kronos decides alone
+    this.chars = {};
+    this.cards = {};
+    svg.innerHTML = `<defs>
+      <linearGradient id="osky" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#020617"/><stop offset=".7" stop-color="#0c1a0a"/><stop offset="1" stop-color="#14240c"/></linearGradient>
+      <linearGradient id="oband" x1="0" x2="1"><stop offset="0" stop-color="#a3e635" stop-opacity=".05"/><stop offset="1" stop-color="#a3e635" stop-opacity=".22"/></linearGradient>
+      <filter id="og2" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>`;
+    el("rect", { width: 1000, height: 620, fill: "url(#osky)" }, svg);
+    const stars = el("g", { fill: "#ecfccb" }, svg);
+    for (let i = 0; i < 70; i++) {
+      el("circle", { cx: (i * 137.5) % 1000, cy: (i * 61.3) % 330, r: i % 7 ? .9 : 1.6, opacity: .25 + (i % 5) * .12,
+        class: i % 9 ? "" : "blink", style: `animation-delay:${(i % 6) * .3}s` }, stars);
+    }
+    // A clock face turning slowly behind everything
+    const dial = el("g", { opacity: .12 }, svg);
+    el("circle", { cx: 500, cy: 210, r: 190, fill: "none", stroke: "#a3e635", "stroke-width": 2 }, dial);
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2;
+      el("line", { x1: 500 + Math.cos(a) * 172, y1: 210 + Math.sin(a) * 172, x2: 500 + Math.cos(a) * 190, y2: 210 + Math.sin(a) * 190, stroke: "#a3e635", "stroke-width": 4 }, dial);
+    }
+    const sign = el("text", { x: 500, y: 44, "text-anchor": "middle", class: "scene-sign lime" }, svg); sign.textContent = "THE OBSERVATORY";
+    // The forecast chart
+    el("rect", { x: 70, y: 62, width: 860, height: 258, rx: 10, fill: "#020617", "fill-opacity": .78, stroke: "#4d7c0f", "stroke-width": 1.5 }, svg);
+    this.chart = el("g", {}, svg);
+    this.head = el("text", { x: 86, y: 82, class: "o-head" }, svg);
+    this.head.textContent = "KRONOS IS READING THE CANDLES…";
+    // Every warden's reading card and figure
+    for (const id of WARDENS) {
+      const a = agents[id]; if (!a) continue;
+      const x = WARDEN_X[id];
+      const g = el("g", { transform: `translate(${x - 85},332)`, class: "o-card" }, svg);
+      el("rect", { width: 170, height: 66, rx: 8, fill: "#0b1220", "fill-opacity": .9, stroke: a.color, "stroke-width": 1.2 }, g);
+      el("text", { x: 10, y: 15, class: "o-role", fill: a.color }, g).textContent = a.role.toUpperCase();
+      const big = el("text", { x: 10, y: 38, class: "o-big" }, g);
+      const tag = el("text", { x: 160, y: 38, "text-anchor": "end", class: "o-tag" }, g);
+      const d1 = el("text", { x: 10, y: 53, class: "o-detail" }, g);
+      const d2 = el("text", { x: 10, y: 63, class: "o-detail" }, g);
+      this.cards[id] = { big, tag, d1, d2 };
+      const h = el("g", { class: "agent", transform: `translate(${x},505)` }, svg);
+      h.innerHTML = sprite(a, 1.3);
+      el("text", { y: 18, "text-anchor": "middle", class: "c-nametag", fill: a.color }, h).textContent = a.name;
+      this.chars[id] = { g: h, x, y: 505, h: 96 };
+    }
+    const k = agents.aurel;
+    if (k) {
+      const g = el("g", { class: "agent", transform: "translate(120,560)" }, svg);
+      g.innerHTML = sprite(k, 1.8);
+      el("text", { y: 18, "text-anchor": "middle", class: "c-nametag", fill: k.color }, g).textContent = k.name;
+      this.chars.aurel = { g, x: 120, y: 560, h: 135 };
+    }
+    this.ticket("#a3e635");
+    this.stampInit();
+  }
+
+  setSubject(e) {
+    this.subjectText(e);
+    this.chart.innerHTML = "";
+    this.head.textContent = "KRONOS IS DRAWING POSSIBLE FUTURES…";
+    for (const [id, c] of Object.entries(this.cards)) {
+      const cass = id === "cass";
+      c.big.textContent = cass ? (this.claude ? "WAITING" : "OFF") : "…"; c.tag.textContent = "";
+      c.big.setAttribute("fill", "#f8fafc");
+      c.d1.textContent = cass ? (this.claude ? "reads the news Kronos can't" : "Claude isn't connected") : "";
+      c.d2.textContent = cass && !this.claude ? "Kronos decides alone" : "";
+    }
+  }
+
+  forecast(e) {
+    const g = this.chart; g.innerHTML = "";
+    const hist = e.history || [], paths = e.paths || [];
+    if (!hist.length) return;
+    const all = hist.concat(...paths), lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo) * .08 || 1;
+    const Y = (v) => CH.y1 - (v - (lo - pad)) / (hi - lo + 2 * pad) * (CH.y1 - CH.y0);
+    const hx = (i) => CH.x0 + i / Math.max(hist.length - 1, 1) * (CH.xt - CH.x0);
+    const fx = (i) => CH.xt + i / Math.max(e.horizon, 1) * (CH.x1 - CH.xt);
+    const last = hist[hist.length - 1];
+    // The 10th-90th percentile band of the paths, day by day
+    const q = (arr, p) => { const s = [...arr].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+    const days = Array.from({ length: e.horizon }, (_, d) => paths.map((p) => p[d]));
+    const top = [[fx(0), Y(last)], ...days.map((v, d) => [fx(d + 1), Y(q(v, .9))])];
+    const bot = [...days.map((v, d) => [fx(d + 1), Y(q(v, .1))])].reverse();
+    el("path", { d: "M" + [...top, ...bot].map((p) => p.map((n) => n.toFixed(1)).join(" ")).join(" L") + " Z", fill: "url(#oband)" }, g);
+    for (const p of paths) {
+      const up = p[p.length - 1] >= last;
+      el("polyline", { points: [[fx(0), Y(last)], ...p.map((v, d) => [fx(d + 1), Y(v)])].map((x) => x.map((n) => n.toFixed(1)).join(",")).join(" "),
+        fill: "none", stroke: up ? "#a3e635" : "#f87171", "stroke-width": 1.1, opacity: .45 }, g);
+    }
+    const med = [[fx(0), Y(last)], ...days.map((v, d) => [fx(d + 1), Y(q(v, .5))])];
+    el("polyline", { points: med.map((x) => x.map((n) => n.toFixed(1)).join(",")).join(" "), fill: "none", stroke: "#ecfccb", "stroke-width": 2.6, filter: "url(#og2)" }, g);
+    el("polyline", { points: hist.map((v, i) => `${hx(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" "), fill: "none", stroke: "#e2e8f0", "stroke-width": 2 }, g);
+    el("line", { x1: CH.xt, x2: CH.xt, y1: CH.y0 - 4, y2: CH.y1 + 6, stroke: "#a3e635", "stroke-dasharray": "4 4", opacity: .7 }, g);
+    el("text", { x: CH.xt, y: CH.y1 + 16, "text-anchor": "middle", class: "o-axis" }, g).textContent = "TODAY " + last;
+    el("text", { x: CH.x1, y: CH.y1 + 16, "text-anchor": "end", class: "o-axis" }, g).textContent = `+${e.horizon} DAYS`;
+    el("text", { x: CH.x0, y: CH.y1 + 16, class: "o-axis" }, g).textContent = `${hist.length} DAYS AGO`;
+    el("text", { x: CH.x1 + 6, y: Y(q(days[days.length - 1] || [last], .9)) + 4, class: "o-axis" }, g).textContent = `${e.p90_pct > 0 ? "+" : ""}${e.p90_pct}%`;
+    el("text", { x: CH.x1 + 6, y: Y(q(days[days.length - 1] || [last], .1)) + 4, class: "o-axis" }, g).textContent = `${e.p10_pct > 0 ? "+" : ""}${e.p10_pct}%`;
+    this.head.textContent = `${(e.model || "KRONOS").toUpperCase()} · ${paths.length} POSSIBLE FUTURES · ${Math.round(e.p_up * 100)}% END HIGHER · AVG ${e.expected_pct > 0 ? "+" : ""}${e.expected_pct}%`;
+  }
+
+  vote(e) {
+    const c = this.cards[e.agent];
+    if (!c) return;
+    const big = { ione: `${Math.round(e.value * 100)}% UP`, venn: `${Math.round(e.value * 100)}% WIN`,
+      sol: (e.detail.match(/#\d+ of \d+/) || ["UNRANKED"])[0].toUpperCase(), cass: e.verdict || "" }[e.agent];
+    c.big.textContent = big;
+    c.big.setAttribute("fill", e.agent === "cass" ? (e.verdict === "VETO" ? "#ef4444" : "#22c55e") : "#f8fafc");
+    c.tag.textContent = e.agent === "cass" ? `sees ${e.stance}` : e.stance;
+    c.tag.setAttribute("fill", STANCE_COLOR[e.stance] || "#94a3b8");
+    const [a, b] = wrap(e.detail || "", 30);
+    c.d1.textContent = a; c.d2.textContent = b;
   }
 }

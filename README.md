@@ -1,6 +1,6 @@
 # Prop Desk Arena
 
-Four AI trading factions, one market, one scoreboard. Each faction trades a different philosophy with its
+Five AI trading factions, one market, one scoreboard. Each faction trades a different philosophy with its
 own paper money. They all face the same prices and the same risk rules, and every call they make is graded
 afterwards. The question the Arena answers: **which way of trading is actually right more often, and what
 does it cost to run?**
@@ -20,10 +20,31 @@ does it cost to run?**
 | **The Brood** | Hive mind | 24 single-signal drones (RSI bounce, 20-day breakout, money inflow, gap up…) vote independently, with no debate. The Hive Queen acts when at least 68% of at least 8 active drones agree, in the **Hive Mind**. Drones that keep being wrong lose weight: the swarm evolves. | Light: 1 Claude call per idea |
 | **The Syndicate** | Setup hunters | Five hunters each grade one published swing setup A/B/C: *Momentum Burst*, *Volatility Contraction Pattern*, *Gap & Drift* (episodic pivot / post-earnings drift), *Exhaustion Hammer* and *Growth Leader* (CANSLIM-lite). The Lookout reads the market from SPY distribution days, follow-through days and S&P 500 breadth. The Fixer pays a bounty on the **Bounty Board** when the setup points (A=3, B=2, C=1, times each hunter's track-record weight) reach 3 in a confirmed uptrend, 4 under pressure, 6 in a correction. A drawdown circuit breaker and a no-revenge-trading rule can stop new entries. Stocks only. | Light: 1 Claude call per idea |
 
+| **The Kronos Watch** | Foundation-model forecasters | [Kronos](https://arxiv.org/abs/2508.02739), an open-source model trained on 12 billion price candles from 45 exchanges, draws 20 possible next weeks for every symbol (it runs on your own computer). Three wardens read those paths in code: *Oracle Ione* counts how many end higher, *Archivist Sol* ranks every symbol by Kronos's expected return (the way the Kronos paper traded), and *Walker Venn* plays the Quartermaster's real stop and target along every path. Keeper Aurel acts in the **Observatory** when 60%+ of paths agree and 2 of 3 wardens concur. Then Claude, as *Interpreter Cass*, reads the news and earnings dates Kronos can't see and may **veto, never start**, the trade. Cass's own call is graded separately, so the scoreboard shows whether Claude's veto helps. No prediction markets. | Light: 0–1 Claude call per idea, only when Kronos wants to trade |
+
 The Syndicate's rules are ported from [tradermonty/claude-trading-skills](https://github.com/tradermonty/claude-trading-skills)
 (MIT License) and run on the same Yahoo data as everyone else. Where our free data can't support a rule exactly,
 the substitute is noted in `factions/syndicate.py`. For example, without past earnings dates a 3%+ gap on 1.5×
 volume stands in for the earnings day, and CANSLIM's A and I letters are left out.
+
+The Kronos model code is vendored from [shiyu-coder/Kronos](https://github.com/shiyu-coder/Kronos) (MIT License) in
+`kronos_model/`; the trained weights (Kronos-small and its tokenizer, about 115 MB) download from Hugging Face on first use. Kronos
+needs PyTorch, which is a separate, optional install (see [Run it](#run-it)). Without it the Kronos Watch sits out
+each round with a notice and the other four run as usual.
+
+**Is Kronos any good?** Its paper reports a real but modest edge: forecasts correlate with what happened at about
+0.03–0.05 (0 is no skill, 1 is perfect), and the paper's trading test bought the top-ranked stocks out of a large
+pool. Don't wait weeks of live rounds to see whether that holds here; replay the past first:
+
+```bash
+python -m prop_desk.kronos_backtest                  # the core watchlist, every 5 days since Sep 2025
+python -m prop_desk.kronos_backtest NVDA AMD BTC-USD --since 2026-01-01
+```
+
+On each past date Kronos sees only the candles up to that day, and its 5-day calls are graded the way the Arena
+grades them, next to two baselines on the same dates: "always long" and "20-day momentum". If Kronos can't beat
+both, it isn't adding anything. Test only dates after August 2025, when Kronos was published; earlier prices may
+have been in its training data. Every forecast is saved to `prop_desk/data/kronos_backtest.csv`.
 
 **Neutral Quartermaster.** Ingrid sizes every faction's trades with the same rules, all enforced in code: 1%
 of equity at risk with a 2×ATR stop, a 10% cap per position (50% for currency pairs), 8 positions max, at most
@@ -104,6 +125,7 @@ check (`python -m prop_desk.check`) and keeping it running.
 
 ```bash
 pip install -r prop_desk/requirements.txt
+pip install -r prop_desk/requirements-kronos.txt   # optional: PyTorch for the Kronos Watch (about 1 GB)
 claude auth login                        # once, with Claude Code: lets the Arena use your Claude plan (or set ANTHROPIC_API_KEY)
 python -m prop_desk.server               # open http://localhost:8000
 ```
@@ -114,7 +136,7 @@ python -m prop_desk.server               # open http://localhost:8000
 |---|---|
 | R | Run a round |
 | M | Battlefield |
-| 1 / 2 / 3 / 4 | War Room / Conclave / Hive Mind / Bounty Board |
+| 1 / 2 / 3 / 4 / 5 | War Room / Conclave / Hive Mind / Bounty Board / Observatory |
 | S | Voices and sound |
 | F | Pick tickers |
 | A | Auto camera |
@@ -154,9 +176,9 @@ Every Claude call goes through one of two backends. The app picks one automatica
 
 | Variable | Default | |
 |---|---|---|
-| `PROP_DESK_FACTIONS` | `legion,ascendant,brood,syndicate` | which factions compete |
+| `PROP_DESK_FACTIONS` | `legion,ascendant,brood,syndicate,kronos` | which factions compete |
 | `PROP_DESK_MODEL` / `PROP_DESK_EFFORT` | `claude-opus-5-5` / `medium` | `claude-sonnet-5-5` is about half the cost |
-| `PROP_DESK_MODEL_LEGION` (or `_ASCENDANT`, `_BROOD`, `_SYNDICATE`) | – | one faction's own model, e.g. Iron Legion on `claude-sonnet-5-5` |
+| `PROP_DESK_MODEL_LEGION` (or `_ASCENDANT`, `_BROOD`, `_SYNDICATE`, `_KRONOS`) | – | one faction's own model, e.g. Iron Legion on `claude-sonnet-5-5` |
 | `PROP_DESK_WATCHLIST` | 12 large caps | the core stocks |
 | `PROP_DESK_ASSETS` | `stocks,lively,crypto,forex,options` | what the factions may trade |
 | `PROP_DESK_LIVELY_COUNT` / `_LIVELY_MIN_PRICE` / `_LIVELY_MIN_DOLLAR_VOLUME` | `8` / `2` / `5000000` | today's lively stocks and their filters |
@@ -172,7 +194,12 @@ Every Claude call goes through one of two backends. The app picks one automatica
 | `PROP_DESK_THRESHOLD` / `PROP_DESK_QUORUM` / `PROP_DESK_MIN_FAMILIES` | `0.30` / `3` / `2` | Iron Legion's voting rules |
 | `PROP_DESK_RISK_PCT`, `_MAX_POS_PCT`, `_MAX_POSITIONS`, `_MAX_PER_SECTOR`, `_MAX_DAILY_LOSS_PCT`, `_EARNINGS_BLACKOUT_DAYS` | 1 / 10 / 8 / 2 / 3 / 3 | Quartermaster's rules |
 | `PROP_DESK_KALSHI` / `PROP_DESK_KALSHI_MIN_EDGE` | `true` / `5` | prediction markets on/off, minimum edge in cents |
-| `PROP_DESK_CALL_HORIZON_DAYS` | `5` | when stock calls get graded |
+| `PROP_DESK_KRONOS_MODEL` | `NeoQuasar/Kronos-small` | `Kronos-mini` is faster, `Kronos-base` bigger and slower |
+| `PROP_DESK_KRONOS_SAMPLES` | `20` | possible futures per symbol; more is steadier and slower |
+| `PROP_DESK_KRONOS_MIN_PROB` | `0.60` | share of futures that must agree before the Kronos Watch acts |
+| `PROP_DESK_KRONOS_DEVICE` | `auto` | `cpu`, `cuda:0` (NVIDIA) or `mps` (Apple) |
+| `PROP_DESK_KRONOS_CLAUDE_VETO` | `true` | `false` lets Kronos trade without Claude's review |
+| `PROP_DESK_CALL_HORIZON_DAYS` | `5` | when stock calls get graded (and how far Kronos forecasts) |
 | `PROP_DESK_AUTORUN_MINUTES` | `0` | run a round every N minutes during US market hours |
 | `PROP_DESK_ALERT_WEBHOOK` | – | Slack-compatible webhook for trade alerts |
 | `PROP_DESK_DATA` / `PROP_DESK_KALSHI_DATA` | `auto` | `synthetic` forces simulated data (offline demos) |
@@ -186,6 +213,7 @@ Every Claude call goes through one of two backends. The app picks one automatica
 | Ascendant | 1 call | under 5¢ |
 | Brood | 1 call | under 5¢ |
 | Syndicate | 1 call | under 5¢ |
+| Kronos Watch | 0–1 call (only when Kronos wants to trade) | under 5¢, plus 1–2 minutes of your computer's time per round |
 
 A full round with every faction weighing 3 ideas costs roughly $1–2, almost all of it Iron Legion. Running only
 the Legion on Sonnet (`PROP_DESK_MODEL_LEGION=claude-sonnet-5-5`) roughly halves that, while the light factions
@@ -201,6 +229,10 @@ prop_desk/
   factions/ascendant.py  the Ascendant's four quant models and log-odds pooling
   factions/brood.py    the Brood's 24 drones and the Queen
   factions/syndicate.py  the Syndicate's five setup screeners, market posture and circuit breaker
+  factions/kronos.py   the Kronos Watch: three wardens over Kronos's paths, Claude's veto
+  forecaster.py        runs Kronos: many separate possible futures per symbol, the stop/target walk
+  kronos_model/        Kronos itself (vendored, MIT License)
+  kronos_backtest.py   would Kronos have called it? Walk-forward test against simple baselines
   agents/              personas, Claude wrapper, Agent SDK research agent, output schemas
   indicators.py        RSI, MACD, ATR, Ichimoku, MFI, CMF, OBV, relative strength
   universe.py          what's tradable today: core + lively stocks, crypto, currencies
@@ -219,13 +251,21 @@ prop_desk/
 
 ## What's tested, and what isn't
 
-- **Tested:** 48 automated tests cover each Syndicate setup, distribution and follow-through days, the market
+- **Tested:** 61 automated tests. The Kronos ones cover reading the paths (direction, spread, the stop-before-target
+  walk), ignoring implausible forecasts, ranking and the wardens' votes, the real Kronos code running end to end on
+  the CPU (with untrained weights) and giving the same forecast twice for the same history, the faction trading,
+  exiting when its paths turn, sitting out without PyTorch, Claude's veto and confirm paths, and the backtest.
+  The others cover each Syndicate setup, distribution and follow-through days, the market
   posture and the circuit breaker, plus indicators, consensus, every risk rule, Kalshi fees and settlement,
   scoring and weights, crypto and currency sizing, option pricing, caps, spreads and settlement, risk-adjusted
-  season scoring, all four factions end to end, Claude-mode paths using a stand-in model, and recovery
+  season scoring, all five factions end to end, Claude-mode paths using a stand-in model, and recovery
   when Claude or the research agent fails. Full rounds were also run in a headless browser at desktop and
   phone widths.
 - **Not yet tested:**
+  - **Kronos's trained weights haven't been run yet.** Hugging Face was unreachable from the build environment, so
+    the faction was only run with the same-size model with untrained weights (to test the plumbing and timing:
+    about 5 seconds per symbol for 30 futures on a 4-core CPU) and with a stand-in. Run `python -m prop_desk.check`
+    on the spare PC; it loads Kronos and makes one real forecast. Then run the backtest before trusting it.
   - Yahoo Finance and Kalshi's live API were unreachable from the build environment, so only simulated data
     has been run. That includes the lively-stock screener, live crypto and currency prices, and live option
     chains. The Kalshi client follows Kalshi's documented public market-data format. Run

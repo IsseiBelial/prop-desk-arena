@@ -4,6 +4,7 @@ const SKIN = {
   scout: "#c68e63", newshound: "#f1c9a5", bear: "#a86b45", oracle: "#e8b98f", fundamental: "#7a4b2e",
   momentum: "#f3cfae", cloud: "#eac096", flow: "#8d5a3b", news: "#f6d5bb", risk: "#d9a37c", chair: "#b47a52",
   fixer: "#9c6644", lookout: "#e9c4a0", burst: "#c68e63", vcp: "#f1d2b6", pivot: "#6f4429", hammer: "#d9a37c", growth: "#e2b48c",
+  ione: "#f1c9a5", sol: "#8d5a3b", venn: "#e2b48c", cass: "#f3cfae", aurel: "#a86b45",
 };
 
 function shade(hex, amt) {
@@ -53,6 +54,18 @@ const ACCESSORY = {
   spyglass: () => `<g transform="translate(9,-29) rotate(-35)"><rect width="16" height="5" rx="1.5" fill="#a16207" stroke="#713f12"/>
     <rect x="12" y="-1" width="6" height="7" rx="1.5" fill="#ca8a04"/></g>
     <path d="M-13 -48 q13 -9 26 0" fill="none" stroke="#7c2d12" stroke-width="3"/>`,
+  // The Kronos Watch's gear
+  hourglass: () => `<g transform="translate(13,-26)"><rect x="-5" y="-1" width="10" height="2" fill="#4d7c0f"/><rect x="-5" y="13" width="10" height="2" fill="#4d7c0f"/>
+    <path d="M-4 1 h8 l-4 6 l4 6 h-8 l4 -6 z" fill="#ecfccb" fill-opacity=".6" stroke="#65a30d" stroke-width=".8"/><path d="M-2 13 h4 l-2 -3 z" fill="#a3e635"/></g>`,
+  scroll: () => `<g transform="translate(9,-28) rotate(18)"><rect width="12" height="17" fill="#fef9c3" stroke="#a16207" stroke-width=".8"/>
+    <rect x="-1.5" y="-2" width="15" height="3" rx="1.5" fill="#ca8a04"/><rect x="-1.5" y="16" width="15" height="3" rx="1.5" fill="#ca8a04"/>
+    <path d="M2.5 4 h7 M2.5 7.5 h7 M2.5 11 h5" stroke="#78716c" stroke-width=".8"/></g>`,
+  lantern: () => `<g transform="translate(14,-20)"><path d="M0 -8 v3" stroke="#3f3f46" stroke-width="1.2"/><rect x="-4.5" y="-5" width="9" height="12" rx="2" fill="#d9f99d" fill-opacity=".85" stroke="#3f3f46" stroke-width="1.2"/>
+    <circle cy="1" r="2.4" fill="#fef08a"/></g><path d="M-12 -46 q12 -12 24 0" fill="none" stroke="#365314" stroke-width="3"/>`,
+  quill: () => `<path d="M11 -18 q8 -16 3 -30 q-6 12 -5 27 z" fill="#fef3c7" stroke="#b45309" stroke-width=".8"/>
+    <path d="M10 -18 l-1 4" stroke="#1c1917" stroke-width="1.2"/><rect x="-12" y="-54" width="24" height="5" rx="2" fill="#d97757"/>`,
+  clockhat: () => `<rect x="-11" y="-68" width="22" height="16" rx="2" fill="#1a2e05" stroke="#365314"/><ellipse cx="0" cy="-52" rx="17" ry="3.6" fill="#1a2e05" stroke="#365314"/>
+    <circle cx="0" cy="-60" r="5.2" fill="#f7fee7" stroke="#a3e635" stroke-width="1"/><path d="M0 -60 v-3.6 M0 -60 h2.8" stroke="#1a2e05" stroke-width="1"/>`,
 };
 
 // Returns SVG markup for one character. `scale` sizes it; legs animate via the .walking class.

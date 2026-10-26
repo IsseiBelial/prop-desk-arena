@@ -83,3 +83,13 @@ class MarketSlate(BaseModel):
     """What the research agent brings back from a prediction-market hunt."""
     summary: str
     ideas: list[MarketIdea]
+
+
+class KronosReview(BaseModel):
+    """Claude's read of a Kronos forecast, next to what Kronos can't see (news, earnings, fundamentals)."""
+    verdict: Literal["CONFIRM", "VETO"] = Field(
+        description="CONFIRM lets the Kronos trade go ahead. VETO stops it; only for a concrete reason.")
+    view: Stance = Field(description="Your own call for the next few days, graded on its own.")
+    headline: str = Field(description="One punchy sentence.")
+    reasoning: str
+    concerns: list[str]
