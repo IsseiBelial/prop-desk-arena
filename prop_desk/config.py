@@ -67,7 +67,7 @@ class Settings:
     # Each faction keeps its own ledger and scorecard under data_dir/<faction>/.
     data_dir: str = os.getenv("PROP_DESK_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
     factions: list[str] = field(default_factory=lambda: [
-        f.strip().lower() for f in os.getenv("PROP_DESK_FACTIONS", "legion,ascendant,brood,syndicate").split(",")
+        f.strip().lower() for f in os.getenv("PROP_DESK_FACTIONS", "legion,ascendant,brood,syndicate,kronos").split(",")
         if f.strip()])
     # Seconds between messages in rules mode so humans can follow the floor.
     pace: float = float(os.getenv("PROP_DESK_PACE", "0.6"))
@@ -108,6 +108,21 @@ class Settings:
     kalshi_quorum: int = int(os.getenv("PROP_DESK_KALSHI_QUORUM", "2"))
     kalshi_max_pct: float = float(os.getenv("PROP_DESK_KALSHI_MAX_PCT", "1"))
     kalshi_total_pct: float = float(os.getenv("PROP_DESK_KALSHI_TOTAL_PCT", "5"))
+
+    # --- The Kronos Watch (needs PyTorch: pip install -r prop_desk/requirements-kronos.txt) ---
+    # Kronos-mini (4M parameters) / Kronos-small (25M) / Kronos-base (102M): bigger is slower, maybe better.
+    kronos_model: str = os.getenv("PROP_DESK_KRONOS_MODEL", "NeoQuasar/Kronos-small")
+    kronos_tokenizer: str = os.getenv("PROP_DESK_KRONOS_TOKENIZER", "")  # blank = the one that matches the model
+    kronos_device: str = os.getenv("PROP_DESK_KRONOS_DEVICE", "auto")  # auto | cpu | cuda:0 | mps
+    # How many possible futures Kronos draws per symbol. More is steadier and slower
+    # (about 0.2 s each per symbol on a 4-core CPU).
+    kronos_samples: int = int(os.getenv("PROP_DESK_KRONOS_SAMPLES", "20"))
+    kronos_temperature: float = float(os.getenv("PROP_DESK_KRONOS_TEMPERATURE", "1.0"))
+    kronos_top_p: float = float(os.getenv("PROP_DESK_KRONOS_TOP_P", "0.9"))
+    # The share of futures that must end higher (or lower) before the Watch acts.
+    kronos_min_prob: float = float(os.getenv("PROP_DESK_KRONOS_MIN_PROB", "0.60"))
+    # Claude may veto a Kronos trade after reading the news and earnings dates Kronos can't see.
+    kronos_claude_veto: bool = os.getenv("PROP_DESK_KRONOS_CLAUDE_VETO", "true").lower() == "true"
 
     # --- Track record ---
     call_horizon_days: int = int(os.getenv("PROP_DESK_CALL_HORIZON_DAYS", "5"))

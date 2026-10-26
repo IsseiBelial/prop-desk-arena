@@ -50,6 +50,18 @@ const FACTION_LINES = {
     retreat: ["Setup's busted. Cut it.", "We're out. Rules are rules."],
     win: ["The Syndicate always collects.", "Setups beat stories."],
   },
+  kronos: {
+    turn: ["The Watch is awake.", "We've seen tomorrow. Many times.", "Wind the clock. Let's look ahead."],
+    research: ["Drawing tomorrow's paths.", "Reading the candles.", "Asking Kronos what comes next."],
+    yes: ["Most of the paths go up.", "Tomorrow leans our way."],
+    no: ["Most paths end lower.", "Tomorrow looks grim."],
+    pass: ["The paths scatter. No call.", "Tomorrow is unclear."],
+    approve: ["The paths agree. We act.", "It's written in the candles."],
+    reject: ["Too many tomorrows disagree.", "Not this time."],
+    trade: ["Set, and timed.", "The clock is running."],
+    retreat: ["The paths turned. We step back.", "Tomorrow changed. So do we."],
+    win: ["We saw it coming.", "Many tomorrows. One winner."],
+  },
   neutral: {
     approve: ["Risk approved. Trade safe.", "Within limits. Cleared."],
     veto: ["Veto. Too hot.", "Not on my watch.", "Limits say no."],
@@ -77,6 +89,11 @@ const UNIT_LINES = {
   pivot: { yes: ["Gap's holding. Drift's on."] },
   hammer: { yes: ["Sellers are exhausted."] },
   growth: { yes: ["A real leader. The numbers back it."] },
+  ione: { yes: ["Most of the paths end higher."], no: ["The paths fall away."] },
+  sol: { yes: ["Top of the list."], pass: ["Middle of the pack."] },
+  venn: { yes: ["The target comes before the stop."], no: ["Too many paths hit the stop."] },
+  cass: { any: ["Kronos can't read the news. I can.", "Let me check what the candles can't see."] },
+  aurel: { approve: ["The clock strikes. Go."], reject: ["Not yet. The hour isn't right."] },
   risk: {},
 };
 
@@ -85,6 +102,7 @@ const VOICE = {
   ascendant: { pitch: 0.45, rate: 0.82 },
   brood: { pitch: 1.75, rate: 1.22 },
   syndicate: { pitch: 0.7, rate: 0.95 },
+  kronos: { pitch: 0.6, rate: 0.9 },
   neutral: { pitch: 1.1, rate: 1.0 },
 };
 

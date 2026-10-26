@@ -1,0 +1,8 @@
+# Optional: the Kronos Watch faction (a forecasting model, runs on your own computer).
+# Install with:  pip install -r prop_desk/requirements-kronos.txt
+# PyTorch is large (about 1 GB with GPU support). For a CPU-only install that is ~200 MB, first run:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.0
+einops>=0.8
+huggingface_hub>=0.33
+safetensors>=0.4

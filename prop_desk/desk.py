@@ -1,4 +1,4 @@
-"""The Arena: four trading factions, one market, one scoreboard.
+"""The Arena: five trading factions, one market, one scoreboard.
 
 Each session:
   1. Scouting   - load prices, fundamentals, headlines and prediction markets once (the "map")

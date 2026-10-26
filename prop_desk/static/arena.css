@@ -13,6 +13,7 @@
   --ascendant: #fbbf24;
   --brood: #d946ef;
   --syndicate: #f97316;
+  --kronos: #a3e635;
   --warn: #facc15;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -118,7 +119,7 @@ button { font: inherit; cursor: pointer; }
 
 /* ---------- battlefield */
 .base-label { font: 800 11px var(--mono); letter-spacing: .12em; paint-order: stroke; stroke: #000; stroke-width: 3px; }
-.base-label.legion { fill: var(--legion); } .base-label.ascendant { fill: var(--ascendant); } .base-label.brood { fill: var(--brood); } .base-label.syndicate { fill: var(--syndicate); } .base-label.neutral { fill: var(--warn); }
+.base-label.legion { fill: var(--legion); } .base-label.ascendant { fill: var(--ascendant); } .base-label.brood { fill: var(--brood); } .base-label.syndicate { fill: var(--syndicate); } .base-label.kronos { fill: var(--kronos); } .base-label.neutral { fill: var(--warn); }
 .bld-label { font: 700 8px var(--mono); fill: #cbd5e1; letter-spacing: .1em; }
 .blink { animation: blink 1.6s infinite; } @keyframes blink { 50% { opacity: .25; } }
 .pulse { animation: pulse 2.2s ease-in-out infinite; } @keyframes pulse { 50% { opacity: .25; } }
@@ -149,12 +150,19 @@ button { font: inherit; cursor: pointer; }
 .flag { animation: rise .4s ease; } @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 .contest { animation: pop .3s ease; }
 
-/* ---------- scenes (War Room, Conclave, Hive Mind, Bounty Board) */
+/* ---------- scenes (War Room, Conclave, Hive Mind, Bounty Board, Observatory) */
 .neon-sign { font: 900 22px var(--mono); letter-spacing: .14em; fill: #fdba74; filter: drop-shadow(0 0 6px #f97316); }
 .scene-sign { font: 900 26px var(--mono); letter-spacing: .2em; }
 .scene-sign.gold { fill: #fde68a; filter: drop-shadow(0 0 8px #f59e0b); }
 .scene-sign.pink { fill: #f5d0fe; filter: drop-shadow(0 0 8px #c026d3); }
 .scene-sign.orange { fill: #fed7aa; filter: drop-shadow(0 0 8px #ea580c); }
+.scene-sign.lime { fill: #ecfccb; filter: drop-shadow(0 0 8px #65a30d); }
+.o-head { font: 800 11px var(--mono); fill: #d9f99d; letter-spacing: .08em; }
+.o-axis { font: 700 10px var(--mono); fill: #a3a3a3; }
+.o-role { font: 800 8.5px var(--mono); letter-spacing: .08em; }
+.o-big { font: 900 19px var(--mono); fill: #f8fafc; }
+.o-tag { font: 900 12px var(--mono); letter-spacing: .06em; }
+.o-detail { font: 600 8.5px var(--mono); fill: #94a3b8; }
 .p-wanted { font: 900 15px Georgia, "Times New Roman", serif; letter-spacing: .25em; fill: #3f2412; }
 .p-setup { font: 800 10px var(--mono); letter-spacing: .06em; fill: #7c2d12; }
 .p-grade { font: 900 64px Georgia, "Times New Roman", serif; }

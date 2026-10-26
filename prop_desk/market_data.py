@@ -174,7 +174,8 @@ class YahooProvider:
 
     def bars(self, symbol: str, days: int = 260) -> pd.DataFrame:
         import yfinance as yf
-        df = yf.Ticker(symbol).history(period="2y", auto_adjust=True)
+        # 2 years covers the Arena's 260 days; the Kronos backtest asks for more.
+        df = yf.Ticker(symbol).history(period="2y" if days <= 480 else "5y", auto_adjust=True)
         if df.empty:
             raise ValueError(f"no price data for {symbol}")
         df = df.rename(columns=str.lower)[["open", "high", "low", "close", "volume"]]

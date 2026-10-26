@@ -64,6 +64,17 @@ py -3.12 -m venv .venv
 - Python 3.11 works too: use `py -3.11` if that's what the PC has.
 - The last command takes a few minutes.
 
+**Optional: the Kronos Watch.** The fifth faction runs a forecasting model on this PC and needs PyTorch, a large
+download (about 1 GB of disk):
+
+```powershell
+.venv\Scripts\python -m pip install -r prop_desk\requirements-kronos.txt
+```
+
+On Windows this installs the CPU version, which is fine: a round takes the Kronos Watch 1–2 minutes. (With an
+NVIDIA graphics card, pytorch.org gives a one-line install for the GPU version, which is much faster.) Skip this
+and the Kronos Watch just sits out each round, or remove `kronos` from `PROP_DESK_FACTIONS`.
+
 ## 4. Choose your settings
 
 ```powershell
@@ -71,8 +82,8 @@ copy prop_desk\arena.env.example prop_desk\arena.env
 notepad prop_desk\arena.env
 ```
 
-The defaults already match the plan: four factions with $100 each, 30-day seasons, rounds at 9:45am and 3:30pm
-US-Eastern, and Iron Legion on Sonnet while the other three use Opus. Things you might change:
+The defaults already match the plan: five factions with $100 each, 30-day seasons, rounds at 9:45am and 3:30pm
+US-Eastern, and Iron Legion on Sonnet while the others use Opus. Things you might change:
 
 | Setting | Why |
 |---|---|
@@ -82,6 +93,7 @@ US-Eastern, and Iron Legion on Sonnet while the other three use Opus. Things you
 | `PROP_DESK_SCHEDULE_ET=09:45,12:30,15:30` | Three rounds a day instead of two. Uses more plan usage. |
 | `PROP_DESK_RISK_PCT` / `PROP_DESK_MAX_POS_PCT` | How aggressive every faction may be. The defaults are 1% risk per trade and 10% max per stock. |
 | `PROP_DESK_ASSETS` | What they may trade. The default is everything: stocks, lively stocks, crypto, currencies and options. Remove any you don't want. |
+| `PROP_DESK_KRONOS_SAMPLES` | How many possible futures Kronos draws per symbol (default 20). Lower it if the Kronos Watch's turn is slow on this PC. |
 | `PROP_DESK_OPTIONS_TRADE_PCT` | At $100 most options are vetoed as too expensive, because one contract covers 100 shares. Raising this lets them in sooner, at more risk. |
 
 Save the file and close Notepad.
@@ -102,6 +114,19 @@ Every line should say `[ OK ]`, and it should end with **Ready**. In particular:
 - **Lively-stock screener**, **Live crypto**, **Live forex** and **Option chains** → the extra instruments
   are reachable. A `[WARN]` here just means that instrument falls back to a built-in list or a model price.
 - **Live Kalshi data** → prediction markets are reachable.
+- **Kronos: Kronos-small on cpu … s per symbol** → the Kronos Watch is ready. The first check downloads the model
+  from huggingface.co (about 115 MB), so it's slower once. A `[WARN]` means PyTorch isn't installed or the
+  download failed, and the Kronos Watch will sit out.
+
+**Before the season (recommended):** see whether Kronos would have called the last year right. This takes a while
+on a CPU (about 20–40 minutes for the 12 core stocks), and it places no trades:
+
+```powershell
+.venv\Scripts\python -m prop_desk.kronos_backtest
+```
+
+It prints Kronos's hit rate next to "always long" and "20-day momentum" on the same dates. If Kronos doesn't beat
+both, keep it in the Arena as an experiment, but don't read much into a good week.
 
 If anything says `[FAIL]`, the line under it tells you what to do. Also see [Troubleshooting](#troubleshooting).
 
@@ -113,7 +138,7 @@ If anything says `[FAIL]`, the line under it tells you what to do. Also see [Tro
 2. Open a browser on the PC and go to **http://localhost:8000**.
 3. Check the badges at the top right. They should read **Claude plan · claude-…** and
    **data: yahoo · markets: kalshi**. If you see "synthetic", the PC can't reach the market data. Re-run step 5.
-4. Press **R** to run a test round and watch the four factions take their turns. It takes about 5 minutes.
+4. Press **R** to run a test round and watch the five factions take their turns. It takes about 5 minutes.
 5. When you're happy with it, press **X** (Reset) so the test round doesn't count. **Season 1 starts at the
    next scheduled round.**
 
@@ -212,4 +237,5 @@ The dashboard runs on the spare PC itself. To open it from other devices **on yo
 | `localhost:8000` won't load | The black window was closed, or the Arena crashed. Check `prop_desk\arena.log` (open it with Notepad). |
 | Error about **port 8000** | Something else uses that port. Add `PORT=8001` to `arena.env` and use `http://localhost:8001`. |
 | Rounds didn't run | The PC was asleep or off, or it's a weekend. Check the sleep setting and that the black window is open. |
+| The Kronos Watch says **"The clock is stopped"** | PyTorch isn't installed (see step 3), or the model couldn't download. Check that `huggingface.co` isn't blocked, then run the health check. |
 | Something else | Run `.venv\Scripts\python -m prop_desk.check`. It checks everything above in one go. |
